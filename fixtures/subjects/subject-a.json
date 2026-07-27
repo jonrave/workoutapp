@@ -1,0 +1,166 @@
+{
+  "profile": {
+    "age": 34,
+    "sex": "male",
+    "trainingAgeYears": 15,
+    "vo2CapableModalities": ["run", "airBike"],
+    "equipment": [
+      "barbell",
+      "rack",
+      "dumbbells-to-50kg",
+      "kettlebells",
+      "pullupBar",
+      "airBike",
+      "tibBar",
+      "plyoBox"
+    ],
+    "weeklyBudgetMinutes": 360,
+    "hardConstraints": []
+  },
+  "load": {
+    "acute": {
+      "maxStrength": 310,
+      "vo2max": 95,
+      "zone2": 240,
+      "power": 25,
+      "mobility": 40
+    },
+    "chronic": {
+      "maxStrength": 295,
+      "vo2max": 105,
+      "zone2": 260,
+      "power": 28,
+      "mobility": 42
+    }
+  },
+  "tissue": {
+    "axialCompression": { "daysSinceLastExposure": 2, "recentLoad": 420 },
+    "kneeExtensor": { "daysSinceLastExposure": 2, "recentLoad": 380 },
+    "hipExtensor": { "daysSinceLastExposure": 3, "recentLoad": 350 },
+    "hamstringHighVelocity": { "daysSinceLastExposure": 6, "recentLoad": 60 },
+    "calfAchillesHighVelocity": { "daysSinceLastExposure": 2, "recentLoad": 150 },
+    "upperPush": { "daysSinceLastExposure": 1, "recentLoad": 320 },
+    "upperPull": { "daysSinceLastExposure": 1, "recentLoad": 340 },
+    "shoulderOverhead": { "daysSinceLastExposure": 4, "recentLoad": 120 },
+    "connectiveHighVelocity": { "daysSinceLastExposure": 5, "recentLoad": 70 }
+  },
+  "recovery": {
+    "hrv7d": { "value": 4.28, "lastUpdated": "2026-07-27", "source": "device-raw", "typicalError": 0.05 },
+    "hrvBaseline60d": { "value": 4.31, "lastUpdated": "2026-07-27", "source": "derived" },
+    "hrvBaselineSD": { "value": 0.24, "lastUpdated": "2026-07-27", "source": "derived" },
+    "rhr7d": { "value": 47.2, "lastUpdated": "2026-07-27", "source": "device-raw", "typicalError": 1.0 },
+    "rhrBaseline60d": { "value": 46.8, "lastUpdated": "2026-07-27", "source": "derived" },
+    "sleepMean7d": { "value": 7.4, "lastUpdated": "2026-07-27", "source": "device-raw", "typicalError": 0.2 },
+    "sleepMidpointSD14d": { "value": 38, "lastUpdated": "2026-07-27", "source": "derived" },
+    "sleepDebtRolling": { "value": 0.5, "lastUpdated": "2026-07-27", "source": "derived" },
+    "sleepPriorNight": { "value": 7.6, "lastUpdated": "2026-07-27", "source": "device-raw", "typicalError": 0.2 },
+    "subjectiveSoreness": { "value": 2, "lastUpdated": "2026-07-27", "source": "user-reported" },
+    "illnessFlags": []
+  },
+  "fitness": {
+    "vo2max": {
+      "value": 52.5,
+      "lastUpdated": "2026-02-10",
+      "source": "measured-lab",
+      "typicalError": 2.1,
+      "note": "GXT with metabolic cart; ~4% CV"
+    },
+    "lt1Pace": {
+      "value": 320,
+      "lastUpdated": "2026-05-14",
+      "source": "measured-field",
+      "typicalError": 8,
+      "note": "sec/km, lactate step test on the run, quarterly protocol"
+    },
+    "maxStrength": {
+      "squat": { "value": 150, "lastUpdated": "2026-07-14", "source": "derived", "typicalError": 4, "note": "e1RM kg from rep sets" },
+      "hinge": { "value": 190, "lastUpdated": "2026-07-08", "source": "derived", "typicalError": 5 },
+      "horizontalPress": { "value": 115, "lastUpdated": "2026-07-21", "source": "derived", "typicalError": 3 },
+      "verticalPress": { "value": 70, "lastUpdated": "2026-07-02", "source": "derived", "typicalError": 3 },
+      "horizontalPull": { "value": 105, "lastUpdated": "2026-07-15", "source": "derived", "typicalError": 4 },
+      "verticalPull": { "value": 100, "lastUpdated": "2026-07-10", "source": "derived", "typicalError": 4, "note": "weighted pullup, bodyweight included" }
+    },
+    "peakPower": { "value": 1250, "lastUpdated": "2026-07-20", "source": "derived", "typicalError": 60, "note": "W, estimated from CMJ" },
+    "cmjHeight": { "value": 41.5, "lastUpdated": "2026-07-20", "source": "measured-field", "typicalError": 1.7, "note": "cm, weekly median of 5" },
+    "rsi": { "value": 2.1, "lastUpdated": "2026-07-20", "source": "measured-field", "typicalError": 0.1 },
+    "almi": { "value": 9.4, "lastUpdated": "2025-11-03", "source": "measured-lab", "typicalError": 0.15, "note": "kg/m2, DEXA" },
+    "fmi": { "value": 4.1, "lastUpdated": "2025-11-03", "source": "measured-lab", "typicalError": 0.2 },
+    "vat": { "value": 380, "lastUpdated": "2025-11-03", "source": "measured-lab", "typicalError": 50, "note": "cm3, DEXA" },
+    "romAsymmetry": { "value": 6, "lastUpdated": "2026-06-30", "source": "measured-field", "typicalError": 2, "note": "% L<R ankle dorsiflexion, knee-to-wall" }
+  },
+  "levers": {
+    "homeSBP7d": { "value": 121, "lastUpdated": "2026-06-30", "source": "measured-field", "typicalError": 4, "note": "7-day protocol, validated upper-arm cuff" },
+    "homeDBP7d": { "value": 76, "lastUpdated": "2026-06-30", "source": "measured-field", "typicalError": 3 },
+    "apoB": { "value": 68, "lastUpdated": "2026-01-15", "source": "measured-lab", "typicalError": 4, "note": "mg/dL" },
+    "lpa": { "value": 22, "lastUpdated": "2024-09-20", "source": "measured-lab", "note": "nmol/L, isoform-independent assay, once per lifetime" },
+    "hba1c": { "value": 5.2, "lastUpdated": "2026-01-15", "source": "measured-lab", "typicalError": 0.1 },
+    "fastingInsulin": { "value": 5.8, "lastUpdated": "2026-01-15", "source": "measured-lab", "typicalError": 0.8, "note": "uIU/mL" },
+    "alcoholUnits7d": { "value": 3, "lastUpdated": "2026-07-27", "source": "user-reported" },
+    "alcoholThreshold7d": 6,
+    "waistCm": { "value": 84.5, "lastUpdated": "2026-07-24", "source": "measured-field", "typicalError": 1 }
+  },
+  "history": {
+    "interruptions": [
+      { "startDate": "2025-08-11", "cause": "family", "durationDays": 4 },
+      { "startDate": "2025-12-18", "cause": "illness", "durationDays": 9, "note": "influenza, systemic days 1-6" },
+      { "startDate": "2026-03-02", "cause": "travel", "durationDays": 6, "note": "work travel, hotel gym only" }
+    ],
+    "injuries": [
+      {
+        "site": "hamstringHighVelocity",
+        "date": "2023-05-20",
+        "severity": "moderate",
+        "recurrenceCount": 1,
+        "resolved": true,
+        "note": "left biceps femoris strain, sprinting in pickup soccer; recurred 2023-09"
+      },
+      {
+        "site": "kneeExtensor",
+        "date": "2021-11-08",
+        "severity": "minor",
+        "recurrenceCount": 0,
+        "resolved": true,
+        "note": "right patellar tendinopathy, resolved with load management"
+      }
+    ],
+    "adherenceBySlot": {
+      "mon-morning": 0.95,
+      "tue-morning": 0.9,
+      "wed-evening": 0.75,
+      "thu-evening": 0.4,
+      "sat-morning": 0.92,
+      "sun-morning": 0.88
+    }
+  },
+  "block": {
+    "activePillar": "vo2max",
+    "startDate": "2026-06-22",
+    "plannedWeeks": 8,
+    "preRegisteredThreshold": {
+      "metric": "vo2max",
+      "direction": "increase",
+      "value": 55.5,
+      "unit": "ml/kg/min",
+      "registeredAt": "2026-06-21T18:00:00Z"
+    },
+    "metricUnderTest": "vo2max"
+  },
+  "trainability": {
+    "maxStrength": { "state": "not-yet-identifiable", "blocksObserved": 0 },
+    "vo2max": { "state": "not-yet-identifiable", "blocksObserved": 0 },
+    "zone2": { "state": "not-yet-identifiable", "blocksObserved": 0 },
+    "power": { "state": "not-yet-identifiable", "blocksObserved": 0 },
+    "mobility": { "state": "not-yet-identifiable", "blocksObserved": 0 }
+  },
+  "standingPlan": {
+    "weekStructure": [
+      { "slot": "mon-morning", "pillar": "maxStrength", "modality": "lift", "description": "Lower emphasis: squat, hinge accessory; 8min power primer (jumps)", "durationMinutes": 60, "targetSRPE": 7 },
+      { "slot": "tue-morning", "pillar": "vo2max", "modality": "run", "description": "Intervals 4x4min Z5 (block session), warmup/cooldown", "durationMinutes": 50, "targetSRPE": 8.5 },
+      { "slot": "wed-evening", "pillar": "zone2", "modality": "run", "description": "Continuous Z2 below LT1", "durationMinutes": 60, "targetSRPE": 4 },
+      { "slot": "thu-evening", "pillar": "mobility", "modality": "other", "description": "Hips/ankles ROM circuit", "durationMinutes": 20, "targetSRPE": 2 },
+      { "slot": "sat-morning", "pillar": "maxStrength", "modality": "lift", "description": "Upper emphasis: press, pull; 7min power primer (throws, pogo)", "durationMinutes": 60, "targetSRPE": 7 },
+      { "slot": "sun-morning", "pillar": "zone2", "modality": "run", "description": "Long easy run Z2", "durationMinutes": 90, "targetSRPE": 4 }
+    ],
+    "lastChanged": "2026-06-22"
+  }
+}
