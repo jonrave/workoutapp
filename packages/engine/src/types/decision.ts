@@ -10,11 +10,14 @@
 import type { IsoDate } from './field';
 import type {
   FitnessMetric,
+  MedicalRedFlag,
   Modality,
   Pillar,
   Slot,
   TissueChannel,
 } from './state';
+
+export type { MedicalRedFlag } from './state';
 
 /** Layer indices of the section 4 cascade, evaluated in strict order. */
 export type CascadeLayer = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -36,14 +39,6 @@ export interface LayerTrace {
   codes: RationaleCode[];
 }
 
-/** Layer 0 red flags. Output is stop and seek care; no training content. */
-export type MedicalRedFlag =
-  | 'chest-pain'
-  | 'syncope'
-  | 'new-neurological-symptoms'
-  | 'suspected-fracture'
-  | 'resting-hr-out-of-range';
-
 export interface MedicalStop {
   reasons: MedicalRedFlag[];
   instruction: 'stop-training-seek-care';
@@ -59,7 +54,17 @@ export interface GateResult {
     /** Plyo/max-velocity blocked: sleep <6h prior night, active HRV flag, or post-strain tissue window. */
     | 'plyometric-block'
     /** Sleep lever active (7d mean <7h): any increase in training load is blocked (section 5). */
-    | 'sleep-load-cap';
+    | 'sleep-load-cap'
+    /** Section 6 post-illness ramp is governing today's output. */
+    | 'post-illness-ramp'
+    /** Section 6 per-pillar return ramp after an interruption is governing today's output. */
+    | 'interruption-ramp'
+    /** Hard unplanned activity yesterday: following-day lower-body + plyo suppression (section 6). */
+    | 'unplanned-activity-suppression'
+    /** Convention: sub-threshold pain on a high-velocity/connective channel with recurrence history or elevated recent load defers that channel's plyo/sprint work until 48h pain-free. */
+    | 'tissue-caution'
+    /** Convention: deep sustained HRV flag (>1 SD, >=7d) corroborated by RHR + soreness, no illness → intervals become Z2 this week. */
+    | 'deload';
   blockedChannels: TissueChannel[];
   /** Substituted session when a pattern is blocked but training continues; `null` when nothing substitutes. */
   substitution: SessionPrescription | null;
@@ -166,6 +171,26 @@ export interface NoiseGateReport {
   appliedChanges: AppliedChange[];
 }
 
+/**
+ * Evaluation of a pending block retest, jointly governed by I10 (only against
+ * the pre-registered threshold) and I3 (a sub-SDC delta is "no change
+ * detected" — a threshold pass inside the noise band is `indeterminate-sub-sdc`).
+ * Thresholds registered below baseline + SDC are ill-posed; the engine refuses
+ * such registrations going forward.
+ */
+export interface RetestEvaluation {
+  verdict:
+    | 'success'
+    | 'threshold-not-met'
+    | 'no-change-detected'
+    | 'indeterminate-sub-sdc'
+    | 'refused-no-preregistration'
+    | 'block-interrupted';
+  delta?: number;
+  sdc?: number;
+  thresholdValue?: number;
+}
+
 export interface Decision {
   date: IsoDate;
   /** First layer that fired; determines the shape of the output (section 4). */
@@ -179,5 +204,7 @@ export interface Decision {
   /** `null` when no allocation ran (layers 0–1 stopped the cascade). */
   allocation: AllocationReport | null;
   noiseGate: NoiseGateReport;
+  /** Present only when a retest was pending in state. */
+  retest: RetestEvaluation | null;
   rationale: RationaleCode[];
 }

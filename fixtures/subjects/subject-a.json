@@ -15,7 +15,8 @@
       "plyoBox"
     ],
     "weeklyBudgetMinutes": 360,
-    "hardConstraints": []
+    "hardConstraints": [],
+    "temporaryConstraints": []
   },
   "load": {
     "acute": {
@@ -31,7 +32,8 @@
       "zone2": 260,
       "power": 28,
       "mobility": 42
-    }
+    },
+    "lastUnplannedActivity": null
   },
   "tissue": {
     "axialCompression": { "daysSinceLastExposure": 2, "recentLoad": 420 },
@@ -55,7 +57,10 @@
     "sleepDebtRolling": { "value": 0.5, "lastUpdated": "2026-07-27", "source": "derived" },
     "sleepPriorNight": { "value": 7.6, "lastUpdated": "2026-07-27", "source": "device-raw", "typicalError": 0.2 },
     "subjectiveSoreness": { "value": 2, "lastUpdated": "2026-07-27", "source": "user-reported" },
-    "illnessFlags": []
+    "illnessFlags": [],
+    "hrvDaysBelowThreshold": 0,
+    "activePain": [],
+    "medicalRedFlags": []
   },
   "fitness": {
     "vo2max": {
@@ -143,7 +148,10 @@
       "unit": "ml/kg/min",
       "registeredAt": "2026-06-21T18:00:00Z"
     },
-    "metricUnderTest": "vo2max"
+    "metricUnderTest": "vo2max",
+    "baselineAtStart": 52.5,
+    "status": "active",
+    "pendingRetest": null
   },
   "trainability": {
     "maxStrength": { "state": "not-yet-identifiable", "blocksObserved": 0 },

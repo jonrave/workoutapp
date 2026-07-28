@@ -54,6 +54,14 @@ export type TimeOfDay = 'morning' | 'midday' | 'evening';
 /** Scheduling slot; the unit of learned adherence (`adherenceBySlot`). */
 export type Slot = `${DayOfWeek}-${TimeOfDay}`;
 
+/** Layer 0 red flags. Output is stop and seek care; no training content. */
+export type MedicalRedFlag =
+  | 'chest-pain'
+  | 'syncope'
+  | 'new-neurological-symptoms'
+  | 'suspected-fracture'
+  | 'resting-hr-out-of-range';
+
 /** Major strength patterns; the "per major pattern" unit of the Layer 3 strength floor. */
 export type StrengthPattern =
   | 'squat'
@@ -76,6 +84,21 @@ export interface TissueState {
 
 export type TissueLoad = Record<TissueChannel, TissueState>;
 
+/**
+ * A declared, time-bounded change to circumstances (travel, work crunch).
+ * Declared facts, not noisy signals: the SDC gate does not apply to them.
+ */
+export interface TemporaryConstraint {
+  startDate: IsoDate;
+  endDate: IsoDate;
+  /** Replaces `equipment` while active. */
+  equipment?: string[];
+  dailyMinutesCap?: number;
+  /** Replaces `weeklyBudgetMinutes` while active. */
+  weeklyBudgetMinutes?: number;
+  note?: string;
+}
+
 export interface Profile {
   age: number;
   sex: 'male' | 'female';
@@ -86,6 +109,7 @@ export interface Profile {
   weeklyBudgetMinutes: number;
   /** Declared hard constraints, e.g. "no barbell overhead pressing". */
   hardConstraints: string[];
+  temporaryConstraints: TemporaryConstraint[];
 }
 
 export interface LoadState {
@@ -93,6 +117,15 @@ export interface LoadState {
   acute: PillarLoad;
   /** 28-day EWMA of sRPE-minutes per pillar. ACWR derived from these is a soft flag only, never a hard block (section 6). */
   chronic: PillarLoad;
+  /**
+   * Most recent unplanned activity, classified into tissue exposure
+   * (section 6). Drives following-day suppression when hard (sRPE >= 7).
+   */
+  lastUnplannedActivity: {
+    date: IsoDate;
+    sRPE: number;
+    tissueChannels: TissueChannel[];
+  } | null;
 }
 
 export interface IllnessFlag {
@@ -130,6 +163,24 @@ export interface RecoveryState {
   /** 0–10 whole-body soreness, user-reported. */
   subjectiveSoreness: Field<number>;
   illnessFlags: IllnessFlag[];
+  /**
+   * Consecutive days the 7-day HRV mean has been strictly below
+   * baseline − 0.75 SD (I5). Projector-derived; "sustained" is defined over
+   * this counter (convention pinned in constants.ts).
+   */
+  hrvDaysBelowThreshold: number;
+  /** Currently reported site pain (Layer 1 input); injury *history* lives in `history.injuries`. */
+  activePain: PainReport[];
+  /** Layer 0 inputs. Any entry stops the cascade: no training content generated. */
+  medicalRedFlags: MedicalRedFlag[];
+}
+
+export interface PainReport {
+  site: TissueChannel | string;
+  score0to10: number;
+  /** Pain that alters gait or movement quality blocks regardless of score (Layer 1). */
+  altersMovement: boolean;
+  reportedAt: IsoDate;
 }
 
 /**
@@ -238,6 +289,17 @@ export interface BlockState {
   /** `null` only for legacy/imported blocks — which makes their retests unevaluable (I10). */
   preRegisteredThreshold: PreRegisteredThreshold | null;
   metricUnderTest: FitnessMetric;
+  /** Value of `metricUnderTest` at block start; the retest delta is measured against this (I3). */
+  baselineAtStart: number;
+  /** `interrupted` when an interruption broke the block; its retest is unevaluable as a block outcome. */
+  status: 'active' | 'interrupted';
+  /** A submitted retest awaiting evaluation against the pre-registered threshold (I10). */
+  pendingRetest: {
+    value: number;
+    unit: string;
+    typicalError?: number;
+    measuredAt: IsoDate;
+  } | null;
 }
 
 /** One session of the standing weekly plan. */
