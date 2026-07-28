@@ -1,0 +1,508 @@
+{
+  "readme": "Machine-readable form of fixtures/scenarios.md. Each scenario deep-merges `overrides` onto fixtures/subjects/subject-a.json (arrays and null replace wholesale), then the engine runs decide(state, date). `expected` asserts only the fields it names; `notes` is the user-approved prose expectation (2026-07-28 review). Conventions pinned by that review: HRV flag = strictly below baseline-0.75SD for >=3 consecutive days; deep-flag deload (>1SD, >=7d, corroborated by RHR+soreness, no illness) converts the week's intervals to Z2; tissue-caution defers a high-velocity/connective channel's plyo/sprint work on any reported pain when the site has recurrence history or elevated recent load, until 48h pain-free; SDC governs retests (sub-SDC threshold pass = indeterminate; future registrations must be >= baseline + SDC); a refused retest still updates the fitness estimate.",
+  "baseline": "fixtures/subjects/subject-a.json",
+  "scenarios": [
+    {
+      "id": "N1",
+      "family": "Normal week",
+      "date": "2026-07-28",
+      "overrides": {},
+      "expected": { "firedLayer": 6, "sessionsNull": false, "noiseGateOutcome": "no-change-detected" },
+      "notes": "Do the planned interval session (4x4min Z5 run) exactly as standing. No gates, no surfaces, floors met by the standing plan."
+    },
+    {
+      "id": "N2",
+      "family": "Normal week",
+      "date": "2026-07-28",
+      "overrides": { "recovery": { "hrv7d": { "value": 4.26 } } },
+      "expected": { "firedLayer": 6, "sessionsNull": false, "noiseGateOutcome": "no-change-detected" },
+      "notes": "Identical to N1. The single low morning reading (3.60) never enters the engine (I5); 7d mean 4.26 is above the 4.13 flag line."
+    },
+    {
+      "id": "N3",
+      "family": "Normal week",
+      "date": "2026-07-28",
+      "overrides": { "fitness": { "cmjHeight": { "value": 40.3, "lastUpdated": "2026-07-27" } } },
+      "expected": { "firedLayer": 6, "sessionsNull": false, "noiseGateOutcome": "no-change-detected" },
+      "notes": "CMJ delta -1.2cm < SDC 4.7cm: rendered 'no change detected' (I3), stripped by L6. Plan untouched."
+    },
+    {
+      "id": "IL1",
+      "family": "Illness (varying duration)",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": {
+          "hrv7d": { "value": 4.2 },
+          "illnessFlags": [{ "onset": "2026-07-26", "systemic": false, "symptoms": ["runny nose", "sore throat"], "resolved": null }]
+        }
+      },
+      "expected": { "firedLayer": 6, "sessionsNull": false, "noiseGateOutcome": "no-change-detected" },
+      "notes": "Above-neck symptoms only: the L1 block is defined on systemic symptoms and does not fire. Standing plan; illness flag monitored."
+    },
+    {
+      "id": "IL2",
+      "family": "Illness (varying duration)",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": {
+          "sleepPriorNight": { "value": 5.9 },
+          "illnessFlags": [{ "onset": "2026-07-27", "systemic": true, "symptoms": ["fever 38.6C", "body aches"], "resolved": null }]
+        }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": true, "gates": [{ "gate": "systemic-illness" }] },
+      "notes": "Systemic illness is a hard block: no training today, sessions null. Section 6 ramp governs the coming days."
+    },
+    {
+      "id": "IL3",
+      "family": "Illness (varying duration)",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": {
+          "hrv7d": { "value": 4.08 },
+          "hrvDaysBelowThreshold": 3,
+          "rhr7d": { "value": 50.1 },
+          "illnessFlags": [{ "onset": "2026-07-21", "systemic": true, "symptoms": ["fever", "body aches"], "resolved": "2026-07-26" }]
+        }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "post-illness-ramp" }, { "gate": "plyometric-block" }] },
+      "notes": "Day 1 post-resolution: easy aerobic only (Z2 ~30-40min sRPE<=3), mobility fine. No strength, no intensity. Plyo additionally blocked by the active HRV flag. 2-3 easy days before strength returns."
+    },
+    {
+      "id": "IL4",
+      "family": "Illness (varying duration)",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": {
+          "hrv7d": { "value": 4.15 },
+          "rhr7d": { "value": 48.9 },
+          "illnessFlags": [{ "onset": "2026-07-14", "systemic": true, "symptoms": ["influenza"], "resolved": "2026-07-24" }]
+        },
+        "load": { "acute": { "maxStrength": 0, "vo2max": 0, "zone2": 90, "power": 0, "mobility": 10 } },
+        "tissue": {
+          "axialCompression": { "daysSinceLastExposure": 13 },
+          "kneeExtensor": { "daysSinceLastExposure": 13 },
+          "hipExtensor": { "daysSinceLastExposure": 13 },
+          "upperPush": { "daysSinceLastExposure": 13 },
+          "upperPull": { "daysSinceLastExposure": 13 },
+          "shoulderOverhead": { "daysSinceLastExposure": 13 }
+        }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "post-illness-ramp" }] },
+      "notes": "Next ramp stage: reintroduce strength at ~half volume, near-prior intensity; continue easy aerobic. No intervals this week (no interval work in week 1 back); no plyo yet (high-velocity last). Ramp scaled up for a 10-day illness."
+    },
+    {
+      "id": "T1",
+      "family": "Travel",
+      "date": "2026-07-28",
+      "overrides": {
+        "profile": {
+          "temporaryConstraints": [{ "startDate": "2026-07-26", "endDate": "2026-07-30", "equipment": ["dumbbells-to-22kg", "treadmill"], "dailyMinutesCap": 40, "note": "work travel" }]
+        },
+        "recovery": { "sleepMean7d": { "value": 7.0 }, "sleepMidpointSD14d": { "value": 55 } }
+      },
+      "expected": { "firedLayer": 5, "sessionsNull": false },
+      "notes": "L5 restructure under declared constraints (facts, not noisy signals; SDC gate does not apply). Strength floor via dumbbell work, interval session on the treadmill (run is VO2-capable, I9), remaining windows to short Z2. Floors protected."
+    },
+    {
+      "id": "T2",
+      "family": "Travel",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": {
+          "sleepMean7d": { "value": 6.4 },
+          "sleepMidpointSD14d": { "value": 85 },
+          "sleepDebtRolling": { "value": 5.0 },
+          "hrv7d": { "value": 4.16 }
+        }
+      },
+      "expected": { "firedLayer": 2, "sessionsNull": false, "gates": [{ "gate": "sleep-load-cap" }], "surfacedLevers": ["sleepDuration", "sleepTimingVariance"], "noiseGateOutcome": "no-change-detected" },
+      "notes": "Sleep duration (<7h: load increases blocked) and timing variance (>60min) surfaced. Standing plan proceeds unchanged - it is not an increase (I6). No HRV flag (4.16 > 4.13), no plyo block."
+    },
+    {
+      "id": "T3",
+      "family": "Travel",
+      "date": "2026-07-27",
+      "overrides": {
+        "profile": {
+          "temporaryConstraints": [{ "startDate": "2026-08-03", "endDate": "2026-08-09", "equipment": ["running-shoes-only"], "note": "declared trip, no equipment" }]
+        }
+      },
+      "expected": { "firedLayer": 5, "sessionsNull": false },
+      "notes": "Forward-plan for the travel week: preserve Z2 volume (least robust) and 1 interval run (block continues, run capable); mobility daily; strength paused for the week (retained for weeks at zero dose). This week unchanged."
+    },
+    {
+      "id": "S1",
+      "family": "Sleep debt",
+      "date": "2026-07-28",
+      "overrides": {
+        "recovery": { "sleepMean7d": { "value": 6.5 }, "sleepDebtRolling": { "value": 4.0 }, "hrv7d": { "value": 4.22 } }
+      },
+      "expected": { "firedLayer": 2, "sessionsNull": false, "gates": [{ "gate": "sleep-load-cap" }], "surfacedLevers": ["sleepDuration"] },
+      "notes": "Sleep surfaced as the highest-value available action; load increases blocked. The standing interval session itself proceeds (not an increase). No plyo block (prior night not <6h, no HRV flag)."
+    },
+    {
+      "id": "S2",
+      "family": "Sleep debt",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": { "sleepPriorNight": { "value": 5.2 }, "sleepMean7d": { "value": 6.8 }, "sleepDebtRolling": { "value": 4.5 } }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "plyometric-block" }], "surfacedLevers": ["sleepDuration"] },
+      "notes": "Plyo/max-velocity blocked (<6h prior night): today's jump primer replaced by a non-ballistic warmup; strength session otherwise proceeds. Sleep lever also surfaced; no load increases."
+    },
+    {
+      "id": "S3",
+      "family": "Sleep debt",
+      "date": "2026-07-27",
+      "overrides": { "recovery": { "sleepMidpointSD14d": { "value": 75 } } },
+      "expected": { "firedLayer": 2, "sessionsNull": false, "surfacedLevers": ["sleepTimingVariance"], "noiseGateOutcome": "no-change-detected" },
+      "notes": "Timing-variance surface only. Standing plan unchanged."
+    },
+    {
+      "id": "H1",
+      "family": "HRV flag",
+      "date": "2026-07-28",
+      "overrides": {
+        "recovery": { "hrv7d": { "value": 4.1 }, "hrvDaysBelowThreshold": 5, "rhr7d": { "value": 50.2 } }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "plyometric-block" }] },
+      "notes": "Flag active (strictly below 4.13, sustained 5 days). Plyo/max-velocity blocked while flagged. The interval session proceeds as planned - the flag's enumerated effect is the plyo block, and the standing plan is the default. Deep-flag deload criteria not met (depth only ~0.9 SD, <7 days)."
+    },
+    {
+      "id": "H2",
+      "family": "HRV flag",
+      "date": "2026-07-28",
+      "overrides": { "recovery": { "hrv7d": { "value": 4.13 }, "hrvDaysBelowThreshold": 0, "rhr7d": { "value": 48.0 } } },
+      "expected": { "firedLayer": 6, "sessionsNull": false, "noiseGateOutcome": "no-change-detected" },
+      "notes": "No flag (approved convention: strictly below baseline-0.75SD for >=3 consecutive days; at exactly the line for 2 days neither is met). Standing plan."
+    },
+    {
+      "id": "H3",
+      "family": "HRV flag",
+      "date": "2026-07-28",
+      "overrides": {
+        "recovery": { "hrv7d": { "value": 4.02 }, "hrvDaysBelowThreshold": 8, "rhr7d": { "value": 51.8 }, "subjectiveSoreness": { "value": 5 } },
+        "load": { "acute": { "vo2max": 130 } }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "plyometric-block" }, { "gate": "deload" }], "rationaleIncludes": ["acwr-soft-caution"] },
+      "notes": "Approved deep-flag deload: >1SD suppression sustained 8 days, corroborated by elevated RHR and soreness, no illness. Plyo blocked; this week's intervals become Z2; strength held at maintenance. ACWR-style soft caution surfaced (may warn, never hard-block)."
+    },
+    {
+      "id": "U1",
+      "family": "Unplanned high-intensity activity",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": { "subjectiveSoreness": { "value": 4 } },
+        "load": {
+          "acute": { "vo2max": 155 },
+          "lastUnplannedActivity": { "date": "2026-07-26", "sRPE": 8, "tissueChannels": ["hamstringHighVelocity", "connectiveHighVelocity", "kneeExtensor"] }
+        },
+        "tissue": {
+          "hamstringHighVelocity": { "daysSinceLastExposure": 0, "recentLoad": 320 },
+          "connectiveHighVelocity": { "daysSinceLastExposure": 0, "recentLoad": 290 }
+        }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "unplanned-activity-suppression" }, { "gate": "plyometric-block", "blockedChannels": ["hamstringHighVelocity"] }] },
+      "notes": "Competitive match yesterday suppresses today's lower-body load and planned plyo (s6): session becomes upper-emphasis strength, no jump primer; hamstring high-velocity exposure blocked for the tissue window. Recurrent-strain history cited in rationale."
+    },
+    {
+      "id": "U2",
+      "family": "Unplanned high-intensity activity",
+      "date": "2026-07-27",
+      "overrides": {
+        "load": {
+          "acute": { "zone2": 490 },
+          "lastUnplannedActivity": { "date": "2026-07-26", "sRPE": 5, "tissueChannels": ["kneeExtensor", "calfAchillesHighVelocity"] }
+        },
+        "tissue": {
+          "kneeExtensor": { "daysSinceLastExposure": 0, "recentLoad": 580 },
+          "calfAchillesHighVelocity": { "daysSinceLastExposure": 0, "recentLoad": 250 }
+        }
+      },
+      "expected": { "firedLayer": 5, "sessionsNull": false },
+      "notes": "Hike classified as Z2 aerobic + knee-extensor eccentric load (s6: not a rest day; sRPE 5 does not trigger following-day suppression). Today's strength proceeds with reduced knee-dominant volume (tissue recency, L5); the hike's aerobic load counts toward the week's Z2 volume."
+    },
+    {
+      "id": "U3",
+      "family": "Unplanned high-intensity activity",
+      "date": "2026-07-28",
+      "overrides": {
+        "recovery": { "hrv7d": { "value": 4.19 } },
+        "load": {
+          "acute": { "vo2max": 215 },
+          "lastUnplannedActivity": { "date": "2026-07-26", "sRPE": 8, "tissueChannels": ["connectiveHighVelocity"] }
+        },
+        "tissue": { "connectiveHighVelocity": { "daysSinceLastExposure": 2, "recentLoad": 250 } }
+      },
+      "expected": { "firedLayer": 6, "sessionsNull": false, "noiseGateOutcome": "no-change-detected", "rationaleIncludes": ["acwr-soft-caution"] },
+      "notes": "The following-day suppression window has passed; the standing interval session proceeds with an ACWR-style soft caution surfaced (acute vo2max load well above chronic). Caution may warn, never hard-block (s6)."
+    },
+    {
+      "id": "IJ1",
+      "family": "Injury flare",
+      "date": "2026-07-28",
+      "overrides": {
+        "recovery": { "activePain": [{ "site": "hamstringHighVelocity", "score0to10": 2, "altersMovement": false, "reportedAt": "2026-07-27" }] },
+        "tissue": { "hamstringHighVelocity": { "daysSinceLastExposure": 1 } }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "tissue-caution", "blockedChannels": ["hamstringHighVelocity"] }] },
+      "notes": "Approved tissue-caution convention: pain on a high-velocity channel with recurrence history defers that channel's sprint/plyo exposure until 48h pain-free. No strides today; session otherwise unchanged. The 3/10 pain block does not fire (2/10, no gait change)."
+    },
+    {
+      "id": "IJ2",
+      "family": "Injury flare",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": { "activePain": [{ "site": "kneeExtensor", "score0to10": 4, "altersMovement": false, "reportedAt": "2026-07-26" }] }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "pain-block", "blockedChannels": ["kneeExtensor"] }] },
+      "notes": "Pain >3/10: knee-extensor pattern blocked with substitution (hinge-pattern lower work + upper accessory in place of squat volume); rest unchanged. Re-test the pattern when pain <=3/10 and movement quality is normal."
+    },
+    {
+      "id": "IJ3",
+      "family": "Injury flare",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": { "activePain": [{ "site": "calfAchillesHighVelocity", "score0to10": 3, "altersMovement": false, "reportedAt": "2026-07-27" }] },
+        "tissue": { "calfAchillesHighVelocity": { "daysSinceLastExposure": 1, "recentLoad": 220 } }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "tissue-caution", "blockedChannels": ["calfAchillesHighVelocity"] }] },
+      "notes": "3/10 is not above 3/10, so the pain block does not fire; approved tissue-caution applies (pain at the line on a connective channel with elevated recent load): pogo removed, upper-body power substituted, rest proceeds."
+    },
+    {
+      "id": "B1",
+      "family": "BP flag outstanding",
+      "date": "2026-07-27",
+      "overrides": { "levers": { "homeSBP7d": { "value": 133, "lastUpdated": "2026-07-26" } } },
+      "expected": { "firedLayer": 2, "sessionsNull": false, "surfacedLevers": ["bloodPressure"], "noiseGateOutcome": "no-change-detected" },
+      "notes": "SBP 7-day mean >=130: highest-priority non-emergent surface; the action is clinical follow-up. Training plan continues unchanged (I6)."
+    },
+    {
+      "id": "B2",
+      "family": "BP flag outstanding",
+      "date": "2026-07-27",
+      "overrides": { "levers": { "homeSBP7d": { "value": 133, "lastUpdated": "2026-07-06" } } },
+      "expected": { "firedLayer": 2, "sessionsNull": false, "surfacedLevers": ["bloodPressure"], "rationaleIncludes": ["lever-unaddressed-escalation"] },
+      "notes": "Flag 3 weeks unaddressed: escalated salience - the surface persists atop every output until addressed. Still zero training-time impact; escalation is in prominence, never reallocation."
+    },
+    {
+      "id": "B3",
+      "family": "BP flag outstanding",
+      "date": "2026-07-27",
+      "overrides": {
+        "levers": {
+          "homeSBP7d": { "value": 128, "lastUpdated": "2025-10-20" },
+          "homeDBP7d": { "lastUpdated": "2025-10-20" }
+        }
+      },
+      "expected": { "firedLayer": 2, "sessionsNull": false, "surfacedLevers": ["staleness"] },
+      "notes": "No flag (128 < 130); staleness surface: re-run the 7-day protocol (quarterly cadence missed by ~6 months; highest value-of-information measure, s8). Plan unchanged."
+    },
+    {
+      "id": "RB1",
+      "family": "Retest below SDC",
+      "date": "2026-08-10",
+      "overrides": {
+        "block": { "pendingRetest": { "value": 54.0, "unit": "ml/kg/min", "typicalError": 2.1, "measuredAt": "2026-08-10" } }
+      },
+      "expected": { "retestVerdict": "no-change-detected" },
+      "notes": "Threshold 55.5 not met (I10) and delta +1.5 < SDC 5.8, so reported strictly as 'no change detected' (I3) - never as 'you gained 1.5'. Block concludes: no detectable response at this dose. Trainability still not-yet-identifiable (1 block). Plan reverts to balanced maintenance; no auto-escalation of volume (s9)."
+    },
+    {
+      "id": "RB2",
+      "family": "Retest below SDC",
+      "date": "2026-07-27",
+      "overrides": {
+        "block": {
+          "activePillar": "power",
+          "startDate": "2026-06-01",
+          "plannedWeeks": 8,
+          "metricUnderTest": "cmjHeight",
+          "baselineAtStart": 41.5,
+          "status": "active",
+          "preRegisteredThreshold": { "metric": "cmjHeight", "direction": "increase", "value": 44.0, "unit": "cm", "registeredAt": "2026-05-31T18:00:00Z" },
+          "pendingRetest": { "value": 42.8, "unit": "cm", "typicalError": 1.7, "measuredAt": "2026-07-27" }
+        }
+      },
+      "expected": { "retestVerdict": "no-change-detected" },
+      "notes": "Same verdict shape as RB1 (delta +1.3 < SDC 4.7; threshold 44.0 not met). Power remains in the floor tier regardless of test results (s4): the 10-15 min/wk exposure continues unchanged."
+    },
+    {
+      "id": "RB3",
+      "family": "Retest below SDC",
+      "date": "2026-07-27",
+      "overrides": {
+        "block": {
+          "preRegisteredThreshold": null,
+          "pendingRetest": { "value": 54.2, "unit": "ml/kg/min", "typicalError": 2.1, "measuredAt": "2026-07-27" }
+        }
+      },
+      "expected": { "retestVerdict": "refused-no-preregistration" },
+      "notes": "I10: evaluation refused - no success/failure verdict, no block conclusion. Approved: the measurement itself still updates fitness.vo2max (valid GXT result with its typicalError); it just cannot be read as a block outcome. Prompt to pre-register before any future retest."
+    },
+    {
+      "id": "RA1",
+      "family": "Retest above SDC",
+      "date": "2026-08-10",
+      "overrides": {
+        "block": { "pendingRetest": { "value": 58.6, "unit": "ml/kg/min", "typicalError": 2.1, "measuredAt": "2026-08-10" } }
+      },
+      "expected": { "retestVerdict": "success" },
+      "notes": "Delta +6.1 > SDC 5.8 and threshold 55.5 met: change detected (I3) and block success (I10). fitness.vo2max updated to 58.6. Trainability posterior shifts up but remains not-yet-identifiable after one block (s7). L4 may shift budget toward vo2max, capped at 15% per step."
+    },
+    {
+      "id": "RA2",
+      "family": "Retest above SDC",
+      "date": "2026-08-10",
+      "overrides": {
+        "block": { "pendingRetest": { "value": 55.8, "unit": "ml/kg/min", "typicalError": 2.1, "measuredAt": "2026-08-10" } }
+      },
+      "expected": { "retestVerdict": "indeterminate-sub-sdc" },
+      "notes": "Approved: SDC governs. 55.8 clears the pre-registered 55.5 but delta +3.3 < SDC 5.8 - a threshold pass inside the noise band is noise, so the block outcome is indeterminate. The threshold was ill-posed at registration (inside 52.5 +/- 5.8); the engine henceforth refuses to register thresholds < baseline + SDC."
+    },
+    {
+      "id": "RA3",
+      "family": "Retest above SDC",
+      "date": "2026-08-10",
+      "overrides": {
+        "block": {
+          "metricUnderTest": "lt1Pace",
+          "baselineAtStart": 320,
+          "preRegisteredThreshold": { "metric": "lt1Pace", "direction": "decrease", "value": 305, "unit": "s/km", "registeredAt": "2026-06-21T18:00:00Z" },
+          "pendingRetest": { "value": 295, "unit": "s/km", "typicalError": 8, "measuredAt": "2026-08-10" }
+        }
+      },
+      "expected": { "retestVerdict": "success" },
+      "notes": "Delta -25 s/km clears SDC 22.2 and the <=305 threshold: success. fitness.lt1Pace updated; run zone boundaries re-derived from the new measured threshold (I9 - never from formulas)."
+    },
+    {
+      "id": "BC1",
+      "family": "Budget cut in half",
+      "date": "2026-07-27",
+      "overrides": {
+        "profile": {
+          "temporaryConstraints": [{ "startDate": "2026-07-27", "endDate": "2026-08-02", "weeklyBudgetMinutes": 180, "note": "work crunch" }]
+        }
+      },
+      "expected": { "firedLayer": 3, "sessionsNull": false, "rationaleIncludes": ["floors-only-budget"] },
+      "notes": "Floors consume the entire 180min; L4 allocates nothing. 2 compressed strength sessions (~40min, >=4 hard sets per major pattern), 1 interval run (~40min - the block session, preserved), ~60min Z2 (least robust to reduction), power inside strength, mobility as habit."
+    },
+    {
+      "id": "BC2",
+      "family": "Budget cut in half",
+      "date": "2026-07-27",
+      "overrides": {
+        "profile": {
+          "temporaryConstraints": [{ "startDate": "2026-07-27", "endDate": "2026-08-09", "weeklyBudgetMinutes": 180, "note": "work crunch, two weeks" }]
+        }
+      },
+      "expected": { "firedLayer": 3, "sessionsNull": false, "rationaleIncludes": ["floors-only-budget"] },
+      "notes": "Floors-only shape both weeks. The block's accumulation dose is cut in its final stretch - recorded in block context - but the week-8 retest proceeds against the original pre-registered threshold (I10: immutable; no re-registration because the block got harder)."
+    },
+    {
+      "id": "BC3",
+      "family": "Budget cut in half",
+      "date": "2026-07-27",
+      "overrides": {
+        "profile": {
+          "temporaryConstraints": [{ "startDate": "2026-07-27", "endDate": "2026-08-02", "weeklyBudgetMinutes": 150, "note": "work crunch" }]
+        },
+        "recovery": { "sleepMean7d": { "value": 6.7 }, "sleepDebtRolling": { "value": 3.5 } }
+      },
+      "expected": { "firedLayer": 2, "sessionsNull": false, "gates": [{ "gate": "sleep-load-cap" }], "surfacedLevers": ["sleepDuration"], "rationaleIncludes": ["floors-only-budget"] },
+      "notes": "Sleep lever surfaced as the top action of the entire output (adding training hours while short on sleep is negative-EV, s5); load increases blocked; floors compressed into 150min (2x35 strength, 1x35 interval, ~45 Z2). Budget cut and sleep cap point the same direction: floors only."
+    },
+    {
+      "id": "TI1",
+      "family": "Two-week interruption",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": { "hrv7d": { "value": 4.33 }, "sleepMean7d": { "value": 7.8 } },
+        "load": { "acute": { "maxStrength": 0, "vo2max": 0, "zone2": 0, "power": 0, "mobility": 0 } },
+        "tissue": {
+          "axialCompression": { "daysSinceLastExposure": 14, "recentLoad": 0 },
+          "kneeExtensor": { "daysSinceLastExposure": 14, "recentLoad": 0 },
+          "hipExtensor": { "daysSinceLastExposure": 14, "recentLoad": 0 },
+          "hamstringHighVelocity": { "daysSinceLastExposure": 20, "recentLoad": 0 },
+          "calfAchillesHighVelocity": { "daysSinceLastExposure": 14, "recentLoad": 0 },
+          "upperPush": { "daysSinceLastExposure": 14, "recentLoad": 0 },
+          "upperPull": { "daysSinceLastExposure": 14, "recentLoad": 0 },
+          "shoulderOverhead": { "daysSinceLastExposure": 15, "recentLoad": 0 },
+          "connectiveHighVelocity": { "daysSinceLastExposure": 19, "recentLoad": 0 }
+        },
+        "history": {
+          "interruptions": [
+            { "startDate": "2025-08-11", "cause": "family", "durationDays": 4 },
+            { "startDate": "2025-12-18", "cause": "illness", "durationDays": 9, "note": "influenza, systemic days 1-6" },
+            { "startDate": "2026-03-02", "cause": "travel", "durationDays": 6, "note": "work travel, hotel gym only" },
+            { "startDate": "2026-07-13", "cause": "family", "durationDays": 14, "note": "family emergency, full stop" }
+          ]
+        },
+        "block": { "status": "interrupted" }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "interruption-ramp" }, { "gate": "plyometric-block" }], "rationaleIncludes": ["block-interrupted"] },
+      "notes": "Week-1 return ramp (s6): volume before intensity - 3-4 easy Z2 + 2 reduced-volume strength (near-prior intensity, no restarted progression); no intervals in week 1; no plyo/high-impact (connective tissue is the rate limiter after >=2 weeks, ramps last). Block marked interrupted: no retest evaluation; a future block needs fresh pre-registration."
+    },
+    {
+      "id": "TI2",
+      "family": "Two-week interruption",
+      "date": "2026-07-27",
+      "overrides": {
+        "recovery": {
+          "hrv7d": { "value": 4.11 },
+          "hrvDaysBelowThreshold": 3,
+          "rhr7d": { "value": 49.5 },
+          "illnessFlags": [{ "onset": "2026-07-11", "systemic": true, "symptoms": ["influenza"], "resolved": "2026-07-21" }]
+        },
+        "load": { "acute": { "maxStrength": 0, "vo2max": 0, "zone2": 0, "power": 0, "mobility": 0 } },
+        "tissue": {
+          "axialCompression": { "daysSinceLastExposure": 16, "recentLoad": 0 },
+          "kneeExtensor": { "daysSinceLastExposure": 16, "recentLoad": 0 },
+          "hipExtensor": { "daysSinceLastExposure": 16, "recentLoad": 0 },
+          "hamstringHighVelocity": { "daysSinceLastExposure": 22, "recentLoad": 0 },
+          "calfAchillesHighVelocity": { "daysSinceLastExposure": 16, "recentLoad": 0 },
+          "upperPush": { "daysSinceLastExposure": 16, "recentLoad": 0 },
+          "upperPull": { "daysSinceLastExposure": 16, "recentLoad": 0 },
+          "shoulderOverhead": { "daysSinceLastExposure": 17, "recentLoad": 0 },
+          "connectiveHighVelocity": { "daysSinceLastExposure": 21, "recentLoad": 0 }
+        },
+        "history": {
+          "interruptions": [
+            { "startDate": "2025-08-11", "cause": "family", "durationDays": 4 },
+            { "startDate": "2025-12-18", "cause": "illness", "durationDays": 9, "note": "influenza, systemic days 1-6" },
+            { "startDate": "2026-03-02", "cause": "travel", "durationDays": 6, "note": "work travel, hotel gym only" },
+            { "startDate": "2026-07-11", "cause": "illness", "durationDays": 16, "note": "influenza 10 days systemic, then travel tail" }
+          ]
+        },
+        "block": { "status": "interrupted" }
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "interruption-ramp" }, { "gate": "plyometric-block" }] },
+      "notes": "Same shape as TI1 but longer and more conservative (ramp scales with the 10-day illness, s6), starting one stage earlier: 2-3 days easy aerobic only before strength returns. Plyo blocked on two independent grounds (ramp + active HRV flag). Intervals not before week 2-3."
+    },
+    {
+      "id": "TI3",
+      "family": "Two-week interruption",
+      "date": "2026-08-03",
+      "overrides": {
+        "recovery": { "hrv7d": { "value": 4.27 } },
+        "load": { "acute": { "maxStrength": 90, "vo2max": 0, "zone2": 180, "power": 0, "mobility": 20 } },
+        "tissue": {
+          "hamstringHighVelocity": { "daysSinceLastExposure": 22, "recentLoad": 0 },
+          "calfAchillesHighVelocity": { "daysSinceLastExposure": 22, "recentLoad": 0 },
+          "connectiveHighVelocity": { "daysSinceLastExposure": 22, "recentLoad": 0 }
+        },
+        "history": {
+          "interruptions": [
+            { "startDate": "2025-08-11", "cause": "family", "durationDays": 4 },
+            { "startDate": "2025-12-18", "cause": "illness", "durationDays": 9, "note": "influenza, systemic days 1-6" },
+            { "startDate": "2026-03-02", "cause": "travel", "durationDays": 6, "note": "work travel, hotel gym only" },
+            { "startDate": "2026-07-12", "cause": "work", "durationDays": 15 }
+          ]
+        },
+        "block": null
+      },
+      "expected": { "firedLayer": 1, "sessionsNull": false, "gates": [{ "gate": "interruption-ramp" }] },
+      "notes": "Week 2 of return: intervals resume this week at reduced dose (one session, 3x3min rather than 4x4) - the week-1 prohibition has expired and volume was rebuilt. Plyometrics not yet: high-velocity channels 22+ days unexposed and connective tissue ramps last; reintroduce next week at minimal dose, fatigue-free conditions only."
+    }
+  ]
+}
