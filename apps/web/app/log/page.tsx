@@ -1,4 +1,5 @@
 import { currentState } from '../../lib/data';
+import { StorageNotice } from '../../components/StorageNotice';
 import { FreeTextLog, MorningCheckIn, QuickLog } from './LogForms';
 
 export const dynamic = 'force-dynamic';
@@ -12,6 +13,7 @@ export default async function LogPage() {
 
   return (
     <>
+      <StorageNotice />
       <section className="card">
         <h2>Free-text log</h2>
         <FreeTextLog />

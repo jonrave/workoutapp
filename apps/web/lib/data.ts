@@ -5,27 +5,17 @@
  * With DATABASE_URL set, events persist in Postgres; otherwise an in-memory
  * log seeded with a few demo measurements backs the local demo.
  */
-import { readFileSync } from 'node:fs';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import { decide, type Decision, type EngineEvent, type UserState } from '@peakspan/engine';
 import { fitnessMeasurement, leverMeasurement } from '@peakspan/adapters';
 import { InMemoryEventLog, projectState, type EventLog } from '@peakspan/store';
-
-function findRepoRoot(): string {
-  let dir = process.cwd();
-  for (let i = 0; i < 6; i++) {
-    if (existsSync(path.join(dir, 'fixtures', 'subjects', 'subject-a.json'))) return dir;
-    dir = path.dirname(dir);
-  }
-  throw new Error('Could not locate fixtures/subjects/subject-a.json from ' + process.cwd());
-}
+// Static import, not a runtime readFileSync: the seed must be compiled into
+// the bundle so it survives serverless deployment, where the repo's fixtures
+// directory is not on disk next to the running function.
+import subjectA from '../../../fixtures/subjects/subject-a.json';
 
 export function loadSeed(): UserState {
-  const root = findRepoRoot();
-  return JSON.parse(
-    readFileSync(path.join(root, 'fixtures', 'subjects', 'subject-a.json'), 'utf8'),
-  ) as UserState;
+  // structuredClone so per-request projection never mutates the shared module.
+  return structuredClone(subjectA) as unknown as UserState;
 }
 
 /** Deterministic demo history so trend views have something to draw. */
@@ -81,6 +71,21 @@ export function getStore(): AppStore {
 
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * True when the event log is in-memory. Locally that just means "resets on
+ * restart"; on serverless it means writes do not survive between requests,
+ * because each invocation may land on a fresh instance. Surfaced in the UI so
+ * a demo deployment never looks broken when a logged event disappears.
+ */
+export function isEphemeral(): boolean {
+  return !process.env.DATABASE_URL;
+}
+
+/** Set by Vercel and most serverless hosts; used only for the warning copy. */
+export function isServerless(): boolean {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
 }
 
 export async function currentState(): Promise<UserState> {
