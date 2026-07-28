@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./postgres": "./src/postgres.ts"
   },
   "description": "Persistence (contract Step 5): append-only event log plus derived state. State is recomputable from the log; pre-registered thresholds are immutable once written.",
   "dependencies": {
