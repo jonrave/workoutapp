@@ -14,6 +14,7 @@ import type {
   Pillar,
   PreRegisteredThreshold,
   Slot,
+  StrengthPattern,
   TissueChannel,
 } from './state';
 
@@ -49,6 +50,8 @@ export interface FitnessMeasurementEvent extends BaseEvent {
   typicalError?: number;
   /** For threshold-derived measures: the modality they were measured on (I9). */
   modality?: Modality;
+  /** Required when metric is `maxStrength`: which major pattern the e1RM belongs to. */
+  pattern?: StrengthPattern;
 }
 
 /** A non-training lever measurement: home BP mean, bloods, waist, alcohol log. */

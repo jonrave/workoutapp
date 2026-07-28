@@ -1,0 +1,20 @@
+{
+  "name": "@peakspan/store",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "Persistence (contract Step 5): append-only event log plus derived state. State is recomputable from the log; pre-registered thresholds are immutable once written.",
+  "dependencies": {
+    "@peakspan/engine": "*",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0"
+  },
+  "scripts": {
+    "test": "vitest run"
+  }
+}
