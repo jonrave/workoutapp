@@ -11,14 +11,25 @@ and pick the branch you want (`claude/type-defs-test-fixtures-8m4aq7`, or
 
 ## 2. Set the root directory
 
-**Root Directory: `apps/web`**
+**Root Directory: `apps/web`** — recommended. Leave "Include files outside the
+root directory" **on**; the app imports `packages/*` and the subject fixture
+from the repo root.
 
-This is the one setting that is not auto-detected and the one that breaks the
-build if it is wrong. Leave "Include files outside the root directory" **on** —
-the app imports `packages/*` and the subject fixture from the repo root.
+If you leave Root Directory at the default (`./`), the repo-root `vercel.json`
+now covers you: it declares `framework: nextjs`, builds the web workspace, and
+points at `apps/web/.next`. Either configuration deploys.
 
-Everything else is detected: framework Next.js, build `next build`, install
-`npm install` at the workspace root.
+### Why this setting bites
+
+Before that `vercel.json` existed, a default Root Directory produced a **404 on
+every path with no failed build**. The repo root has no `next.config`, no
+`build` script, and no `index.html`, so Vercel detected no framework, had
+nothing to build, and published an empty output directory. An empty deployment
+is a *successful* deployment that serves nothing — which is why the dashboard
+showed green while every URL returned `NOT_FOUND`.
+
+That is the signature to remember: **404 on every path, including `/`, with a
+green build, means the deployment is empty — not that routing is broken.**
 
 ## 3. Attach Postgres
 

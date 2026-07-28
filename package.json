@@ -7,6 +7,9 @@
     "apps/*"
   ],
   "scripts": {
+    "build": "npm run build -w @peakspan/web",
+    "dev": "npm run dev -w @peakspan/web",
+    "start": "npm run start -w @peakspan/web",
     "test": "vitest run",
     "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit"
   },
