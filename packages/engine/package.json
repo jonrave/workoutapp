@@ -1,0 +1,14 @@
+{
+  "name": "@peakspan/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "description": "Pure decision engine: decide(state, date) -> Decision. Zero runtime dependencies by contract (I1, section 10 step 3).",
+  "dependencies": {},
+  "scripts": {
+    "test": "vitest run"
+  }
+}
