@@ -148,6 +148,13 @@ export interface BlockStartEvent extends BaseEvent {
   plannedWeeks: number;
   metricUnderTest: FitnessMetric;
   preRegisteredThreshold: PreRegisteredThreshold;
+  /**
+   * The metric value the threshold was validated against at registration.
+   * Recorded so state projected from the log alone can reconstruct
+   * `block.baselineAtStart` even when the seed carries no value for the
+   * metric. Optional for events written before this field existed.
+   */
+  baselineValue?: number;
 }
 
 /**

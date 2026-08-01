@@ -40,6 +40,16 @@ export async function POST(request: Request) {
   if (body.kind === 'start') {
     const metric = body.metricUnderTest;
     const baseline = state.fitness[metric];
+    if (baseline === null) {
+      return NextResponse.json(
+        {
+          error:
+            `No baseline on record for ${metric}. Record a measurement first — ` +
+            'a threshold cannot be validated against a value that does not exist.',
+        },
+        { status: 400 },
+      );
+    }
     try {
       const event = startBlock({
         pillar: body.pillar,

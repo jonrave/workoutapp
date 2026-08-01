@@ -4,7 +4,11 @@ import { useState } from 'react';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-export function StartBlockForm({ baselines }: { baselines: Record<string, { value: number; sdc: number }> }) {
+export function StartBlockForm({
+  baselines,
+}: {
+  baselines: Record<string, { value: number; sdc: number } | null>;
+}) {
   const [pillar, setPillar] = useState('vo2max');
   const [metric, setMetric] = useState('vo2max');
   const [weeks, setWeeks] = useState(8);
@@ -69,7 +73,7 @@ export function StartBlockForm({ baselines }: { baselines: Record<string, { valu
       </label>
       <label>
         Success threshold — must clear the noise band
-        {baseline && (
+        {baseline ? (
           <span className="muted">
             baseline {baseline.value}; a detectable threshold is{' '}
             {direction === 'increase'
@@ -77,10 +81,15 @@ export function StartBlockForm({ baselines }: { baselines: Record<string, { valu
               : `≤ ${(baseline.value - baseline.sdc).toFixed(1)}`}{' '}
             (SDC {baseline.sdc.toFixed(1)})
           </span>
+        ) : (
+          <span className="muted">
+            no baseline on record for this metric — record a measurement first; a threshold cannot
+            be validated against a value that does not exist
+          </span>
         )}
         <input value={threshold} onChange={(e) => setThreshold(e.target.value)} placeholder="e.g. 58.5" />
       </label>
-      <button type="submit">Register threshold &amp; start block</button>
+      <button type="submit" disabled={!baseline}>Register threshold &amp; start block</button>
       {notice && <div className={`notice ${notice.kind}`}>{notice.text}</div>}
     </form>
   );

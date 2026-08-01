@@ -256,7 +256,7 @@ export function layer2Levers(state: UserState, date: IsoDate): Layer2Result {
     trigger: RationaleCode,
   ) => surfaces.push({ lever, priority, trainingPlanUnchanged: true, trigger });
 
-  if (L.homeSBP7d.value >= CONSTANTS.SBP_FLAG) {
+  if (L.homeSBP7d !== null && L.homeSBP7d.value >= CONSTANTS.SBP_FLAG) {
     push('bloodPressure', 'highest-non-emergent', {
       code: 'sbp-flag',
       params: { sbp7d: L.homeSBP7d.value },
@@ -287,26 +287,30 @@ export function layer2Levers(state: UserState, date: IsoDate): Layer2Result {
       params: { sd14d: r.sleepMidpointSD14d.value },
     });
   }
-  if (L.alcoholUnits7d.value > L.alcoholThreshold7d) {
+  if (L.alcoholUnits7d !== null && L.alcoholUnits7d.value > L.alcoholThreshold7d) {
     push('alcohol', 'standard', {
       code: 'alcohol-over-threshold',
       params: { units: L.alcoholUnits7d.value, threshold: L.alcoholThreshold7d },
     });
   }
-  if (L.waistCm.value > CONSTANTS.WAIST_FLAG_CM) {
+  if (L.waistCm !== null && L.waistCm.value > CONSTANTS.WAIST_FLAG_CM) {
     push('centralAdiposity', 'standard', { code: 'waist-flag', params: { cm: L.waistCm.value } });
   }
   const lpaHigh = L.lpa !== null && L.lpa.value > CONSTANTS.LPA_HIGH;
   if (
-    L.apoB.value > CONSTANTS.APOB_FLAG ||
-    (L.apoB.value > CONSTANTS.APOB_FLAG_WITH_RISK && lpaHigh)
+    L.apoB !== null &&
+    (L.apoB.value > CONSTANTS.APOB_FLAG ||
+      (L.apoB.value > CONSTANTS.APOB_FLAG_WITH_RISK && lpaHigh))
   ) {
     push('apoB', 'standard', { code: 'apob-flag', params: { apoB: L.apoB.value } });
   }
   if (L.lpa === null) {
     push('lpaNeverMeasured', 'standard', { code: 'lpa-never-measured' });
   }
-  if (L.hba1c.value > CONSTANTS.HBA1C_FLAG || L.fastingInsulin.value > CONSTANTS.INSULIN_FLAG) {
+  if (
+    (L.hba1c !== null && L.hba1c.value > CONSTANTS.HBA1C_FLAG) ||
+    (L.fastingInsulin !== null && L.fastingInsulin.value > CONSTANTS.INSULIN_FLAG)
+  ) {
     push('metabolic', 'standard', { code: 'metabolic-out-of-range' });
   }
 
@@ -682,7 +686,7 @@ export function evaluateRetest(state: UserState): RetestEvaluation | null {
   const typicalError =
     retest.typicalError ??
     (block.metricUnderTest !== 'maxStrength'
-      ? state.fitness[block.metricUnderTest].typicalError ?? 0
+      ? state.fitness[block.metricUnderTest]?.typicalError ?? 0
       : 0);
   const sdcValue = sdc(typicalError);
   const delta = retest.value - block.baselineAtStart;

@@ -186,54 +186,59 @@ export interface PainReport {
 /**
  * Per-pillar fitness estimates: point estimate + uncertainty + measurement
  * date, all carried by `Field<number>` (`typicalError` → derived SDC, I3).
+ * `null` = never measured. The engine treats an absent estimate as absent —
+ * it never substitutes a population value (I8), and features that need a
+ * baseline (block registration, retest evaluation) refuse rather than guess.
  */
 export interface FitnessState {
   /** ml/kg/min. */
-  vo2max: Field<number>;
+  vo2max: Field<number> | null;
   /** Seconds per km at LT1 on the primary modality. */
-  lt1Pace: Field<number>;
-  /** Estimated 1RM in kg per major pattern. */
-  maxStrength: Record<StrengthPattern, Field<number>>;
+  lt1Pace: Field<number> | null;
+  /** Estimated 1RM in kg per major pattern. `null` per pattern = never measured. */
+  maxStrength: Record<StrengthPattern, Field<number> | null>;
   /** Watts. */
-  peakPower: Field<number>;
+  peakPower: Field<number> | null;
   /** cm, weekly median of 5 (section 8). */
-  cmjHeight: Field<number>;
+  cmjHeight: Field<number> | null;
   /** Reactive strength index, unitless. */
-  rsi: Field<number>;
+  rsi: Field<number> | null;
   /** Appendicular lean mass index, kg/m². Near-zero decision value in a 15-year lifter (section 8). */
-  almi: Field<number>;
+  almi: Field<number> | null;
   /** Fat mass index, kg/m². */
-  fmi: Field<number>;
+  fmi: Field<number> | null;
   /** DEXA visceral adipose tissue, cm³. */
-  vat: Field<number>;
+  vat: Field<number> | null;
   /** Percent asymmetry on tracked ROM tests. */
-  romAsymmetry: Field<number>;
+  romAsymmetry: Field<number> | null;
 }
 
 /**
  * Non-training levers (section 5, I6). Their own lane; flags here never
  * consume or reallocate training time. Each field's `lastUpdated` drives
- * staleness prompting.
+ * staleness prompting. `null` = never measured: no flag can fire on an
+ * unmeasured lever (the engine does not guess), and only Lp(a) carries an
+ * explicit never-measured prompt (section 5).
  */
 export interface LeverState {
   /** mmHg, 7-day home protocol mean. Flag at >=130. */
-  homeSBP7d: Field<number>;
+  homeSBP7d: Field<number> | null;
   /** mmHg, 7-day home protocol mean. */
-  homeDBP7d: Field<number>;
+  homeDBP7d: Field<number> | null;
   /** mg/dL. Flag at >70, or >60 with Lp(a) >50 nmol/L or family history. */
-  apoB: Field<number>;
+  apoB: Field<number> | null;
   /** nmol/L, isoform-independent assay. `null` = never measured → prompt once per lifetime. */
   lpa: Field<number> | null;
   /** Percent. */
-  hba1c: Field<number>;
+  hba1c: Field<number> | null;
   /** µIU/mL. */
-  fastingInsulin: Field<number>;
+  fastingInsulin: Field<number> | null;
   /** Rolling 7-day units. */
-  alcoholUnits7d: Field<number>;
+  alcoholUnits7d: Field<number> | null;
   /** User-set weekly units threshold for the alcohol flag. */
   alcoholThreshold7d: number;
   /** cm. Flag at >94. */
-  waistCm: Field<number>;
+  waistCm: Field<number> | null;
 }
 
 export interface Interruption {

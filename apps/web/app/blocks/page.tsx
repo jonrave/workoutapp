@@ -16,10 +16,10 @@ export default async function BlocksPage() {
 
   const metrics = ['vo2max', 'lt1Pace', 'peakPower', 'cmjHeight', 'rsi'] as const;
   const baselines = Object.fromEntries(
-    metrics.map((m) => [
-      m,
-      { value: state.fitness[m].value, sdc: sdc(state.fitness[m].typicalError ?? 0) },
-    ]),
+    metrics.map((m) => {
+      const f = state.fitness[m];
+      return [m, f === null ? null : { value: f.value, sdc: sdc(f.typicalError ?? 0) }];
+    }),
   );
 
   return (
