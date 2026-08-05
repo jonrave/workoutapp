@@ -22,11 +22,24 @@ function providers() {
   };
 }
 
-export async function GET() {
+/**
+ * GET normally reports configuration. Vercel cron jobs can only issue GETs,
+ * so a request carrying the `x-vercel-cron` header (or `?run=1`) runs the
+ * sync instead — same idempotent pull, safe on any schedule.
+ */
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  if (request.headers.get('x-vercel-cron') !== null || url.searchParams.get('run') === '1') {
+    return runSync();
+  }
   return NextResponse.json({ providers: providers() });
 }
 
 export async function POST() {
+  return runSync();
+}
+
+async function runSync() {
   const p = providers();
   if (!p.oura && !p.strava) {
     return NextResponse.json(
