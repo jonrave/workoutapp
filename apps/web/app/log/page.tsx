@@ -1,5 +1,6 @@
 import { currentState } from '../../lib/data';
 import { StorageNotice } from '../../components/StorageNotice';
+import { DeviceSync } from '../../components/DeviceSync';
 import { FreeTextLog, MorningCheckIn, QuickLog } from './LogForms';
 
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,10 @@ export default async function LogPage() {
       <section className="card">
         <h2>Morning check-in</h2>
         <MorningCheckIn />
+      </section>
+      <section className="card">
+        <h2>Device sync</h2>
+        <DeviceSync />
       </section>
     </>
   );

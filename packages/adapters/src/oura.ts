@@ -46,11 +46,98 @@ export function mapOuraDaily(raw: OuraDaily, ctx: EventContext = defaultContext)
   return events;
 }
 
-/** Strava adapter: interface stub — real integration is deferred, not silently dropped. */
-export interface StravaActivityRaw {
-  id: number;
-  type: string;
-  moving_time_seconds: number;
-  start_date: string;
-  perceived_exertion?: number;
+/* ------------------------------------------------------------------ */
+/* Oura API v2                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Subset of an Oura API v2 `/usercollection/sleep` document we consume.
+ * `readiness`/scores are present in real payloads and never mapped (I4).
+ */
+export interface OuraSleepDocV2 {
+  day: string;
+  /** Average overnight rMSSD in ms. */
+  average_hrv?: number | null;
+  lowest_heart_rate?: number | null;
+  /** Seconds. */
+  total_sleep_duration?: number | null;
+  bedtime_start?: string;
+  bedtime_end?: string;
+  /** e.g. 'long_sleep' | 'late_nap' — naps are skipped for nightly signals. */
+  type?: string;
+}
+
+function midSleepMinutes(startIso: string, endIso: string): number | null {
+  const a = new Date(startIso).getTime();
+  const b = new Date(endIso).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return null;
+  const mid = new Date((a + b) / 2);
+  let m = mid.getHours() * 60 + mid.getMinutes();
+  // Normalize so 23:00 (1380) and 03:00 (180 -> 1620) sit on one scale for SD.
+  if (m < 720) m += 1440;
+  return m;
+}
+
+/** Map one v2 sleep document to raw signal events. Naps produce nothing. */
+export function mapOuraSleepDocV2(
+  doc: OuraSleepDocV2,
+  ctx: EventContext = defaultContext,
+): RecoverySignalEvent[] {
+  if (doc.type && doc.type !== 'long_sleep' && doc.type !== 'sleep') return [];
+  const daily: OuraDaily = { day: doc.day };
+  if (doc.average_hrv != null && doc.average_hrv > 0) daily.average_hrv = doc.average_hrv;
+  if (doc.lowest_heart_rate != null) daily.resting_heart_rate = doc.lowest_heart_rate;
+  if (doc.total_sleep_duration != null) daily.total_sleep_duration_seconds = doc.total_sleep_duration;
+  const events = mapOuraDaily(daily, ctx);
+  if (doc.bedtime_start && doc.bedtime_end) {
+    const mid = midSleepMinutes(doc.bedtime_start, doc.bedtime_end);
+    if (mid !== null) {
+      events.push(
+        recoverySignal(
+          { signal: 'sleepMidpointClockTime', value: mid, occurredAt: `${doc.day}T07:00:00Z`, source: 'device-raw' },
+          ctx,
+        ),
+      );
+    }
+  }
+  return events;
+}
+
+/**
+ * Deterministic ids (`oura_<day>_<signal>`) make pulls idempotent: syncing an
+ * overlapping window twice can never duplicate a reading.
+ */
+export function withDeterministicOuraIds(events: RecoverySignalEvent[]): RecoverySignalEvent[] {
+  return events.map((e) => ({ ...e, id: `oura_${e.occurredAt.slice(0, 10)}_${e.signal}` }));
+}
+
+/**
+ * Minimal Oura API v2 client. Personal access token; raw signals only.
+ * Network stays here at the adapter edge — the engine never sees it (I1).
+ */
+export class OuraClient {
+  constructor(
+    private readonly token: string,
+    private readonly fetchImpl: typeof fetch = fetch,
+  ) {}
+
+  async pullSleep(
+    startDate: string,
+    endDate: string,
+    ctx: EventContext = defaultContext,
+  ): Promise<RecoverySignalEvent[]> {
+    const events: RecoverySignalEvent[] = [];
+    let url: string | null =
+      `https://api.ouraring.com/v2/usercollection/sleep?start_date=${startDate}&end_date=${endDate}`;
+    while (url) {
+      const res = await this.fetchImpl(url, { headers: { Authorization: `Bearer ${this.token}` } });
+      if (!res.ok) throw new Error(`Oura API ${res.status}: ${await res.text()}`);
+      const body = (await res.json()) as { data?: OuraSleepDocV2[]; next_token?: string | null };
+      for (const doc of body.data ?? []) events.push(...mapOuraSleepDocV2(doc, ctx));
+      url = body.next_token
+        ? `https://api.ouraring.com/v2/usercollection/sleep?start_date=${startDate}&end_date=${endDate}&next_token=${body.next_token}`
+        : null;
+    }
+    return withDeterministicOuraIds(events);
+  }
 }
