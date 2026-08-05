@@ -63,6 +63,35 @@ Add `ANTHROPIC_API_KEY` to use the Claude-backed activity parser. Without it
 the deterministic keyword stub runs instead, so the confirm-before-log flow
 still works offline — the LLM is never in the decision path either way (I2).
 
+## 5. Optional: device sync (Oura + Strava)
+
+With these set, the Log page grows a **Sync last 30 days** button and
+`POST /api/sync` pulls raw signals into the event log. Only raw signals cross
+the boundary — Oura Readiness and Strava Relative Effort are never imported
+(I4). Pulls are idempotent (deterministic event ids), so syncing overlapping
+windows never duplicates anything.
+
+**Oura** — nightly HRV (rMSSD), resting HR, sleep duration and midpoint:
+
+1. Log in at `cloud.ouraring.com` → **Personal Access Tokens** → create one.
+2. Set `OURA_TOKEN=<token>`.
+
+**Strava** — runs, rides, hikes as classified activities:
+
+1. `strava.com/settings/api` → create an API application → note the
+   **Client ID** and **Client Secret**.
+2. Authorize your own app once to get a refresh token with `activity:read`
+   scope (Strava's "Getting Started" OAuth flow; a one-time browser + curl
+   dance).
+3. Set `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_REFRESH_TOKEN`.
+
+To sync on a schedule instead of on demand, point a Vercel cron job at
+`POST /api/sync` (e.g. daily at 07:00).
+
+No tokens? The client-side app (and this one) also accept **export files**:
+Oura's trends CSV / API JSON and Strava's `activities.csv` bulk export can be
+dropped into the Sync tab and are parsed entirely in the browser.
+
 ## What deploys
 
 | Route | Notes |

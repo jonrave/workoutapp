@@ -24,6 +24,7 @@ import type {
   RecoverySignalEvent,
   RetestEvent,
   Slot,
+  StrengthPattern,
   SubjectiveEvent,
   TissueChannel,
 } from '@peakspan/engine';
@@ -93,6 +94,8 @@ export function fitnessMeasurement(
     occurredAt: IsoDateTime;
     typicalError?: number;
     modality?: Modality;
+    /** Required when metric is maxStrength — the projector files by pattern. */
+    pattern?: StrengthPattern;
     source: 'measured-lab' | 'measured-field' | 'derived';
   },
   ctx: EventContext = defaultContext,
@@ -110,6 +113,7 @@ export function fitnessMeasurement(
   const te = resolveTypicalError(input.metric, input.value, input.typicalError);
   if (te !== undefined) event.typicalError = te;
   if (input.modality !== undefined) event.modality = input.modality;
+  if (input.pattern !== undefined) event.pattern = input.pattern;
   return event;
 }
 
@@ -355,6 +359,7 @@ export function startBlock(
     pillar: input.pillar,
     plannedWeeks: input.plannedWeeks,
     metricUnderTest: input.metricUnderTest,
+    baselineValue: input.baselineValue,
     preRegisteredThreshold: {
       metric: input.metricUnderTest,
       direction: input.direction,

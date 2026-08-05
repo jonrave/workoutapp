@@ -22,8 +22,24 @@ export default async function TrendsPage() {
       ? { date: e.occurredAt.slice(0, 10), value: e.value }
       : null,
   );
-  if (cmj.length === 0) cmj.push({ date: state.fitness.cmjHeight.lastUpdated, value: state.fitness.cmjHeight.value });
-  if (waist.length === 0) waist.push({ date: state.levers.waistCm.lastUpdated, value: state.levers.waistCm.value });
+  const vo2 = series((e) =>
+    (e.type === 'fitness-measurement' || e.type === 'retest') && e.metric === 'vo2max'
+      ? { date: e.occurredAt.slice(0, 10), value: e.value }
+      : null,
+  );
+  if (cmj.length === 0 && state.fitness.cmjHeight !== null) {
+    cmj.push({ date: state.fitness.cmjHeight.lastUpdated, value: state.fitness.cmjHeight.value });
+  }
+  if (waist.length === 0 && state.levers.waistCm !== null) {
+    waist.push({ date: state.levers.waistCm.lastUpdated, value: state.levers.waistCm.value });
+  }
+  if (vo2.length === 0 && state.fitness.vo2max !== null) {
+    vo2.push({ date: state.fitness.vo2max.lastUpdated, value: state.fitness.vo2max.value });
+  }
+
+  const empty = (what: string) => (
+    <p className="muted">No {what} on record yet — record one and the chart draws itself.</p>
+  );
 
   return (
     <>
@@ -37,28 +53,42 @@ export default async function TrendsPage() {
       </section>
       <section className="card">
         <h2>CMJ height (weekly median of 5)</h2>
-        <TrendChart title="CMJ height" unit="cm" points={cmj} typicalError={state.fitness.cmjHeight.typicalError ?? 0} />
+        {cmj.length > 0 ? (
+          <TrendChart
+            title="CMJ height"
+            unit="cm"
+            points={cmj}
+            typicalError={state.fitness.cmjHeight?.typicalError ?? 0}
+          />
+        ) : (
+          empty('CMJ measurement')
+        )}
       </section>
       <section className="card">
         <h2>Waist (weekly)</h2>
-        <TrendChart title="Waist" unit="cm" points={waist} typicalError={state.levers.waistCm.typicalError ?? 0} />
+        {waist.length > 0 ? (
+          <TrendChart
+            title="Waist"
+            unit="cm"
+            points={waist}
+            typicalError={state.levers.waistCm?.typicalError ?? 0}
+          />
+        ) : (
+          empty('waist measurement')
+        )}
       </section>
       <section className="card">
         <h2>VO2max (annual GXT / block retests)</h2>
-        <TrendChart
-          title="VO2max"
-          unit="ml/kg/min"
-          points={series((e) =>
-            (e.type === 'fitness-measurement' || e.type === 'retest') && e.metric === 'vo2max'
-              ? { date: e.occurredAt.slice(0, 10), value: e.value }
-              : null,
-          ).concat(
-            events.some((e) => (e.type === 'fitness-measurement' || e.type === 'retest') && e.metric === 'vo2max')
-              ? []
-              : [{ date: state.fitness.vo2max.lastUpdated, value: state.fitness.vo2max.value }],
-          )}
-          typicalError={state.fitness.vo2max.typicalError ?? 0}
-        />
+        {vo2.length > 0 ? (
+          <TrendChart
+            title="VO2max"
+            unit="ml/kg/min"
+            points={vo2}
+            typicalError={state.fitness.vo2max?.typicalError ?? 0}
+          />
+        ) : (
+          empty('VO2max measurement')
+        )}
       </section>
     </>
   );

@@ -81,6 +81,9 @@ export const fitnessMeasurementSchema = z.object({
   unit: z.string().min(1),
   typicalError: z.number().positive().optional(),
   modality: modality.optional(),
+  pattern: z
+    .enum(['squat', 'hinge', 'horizontalPress', 'verticalPress', 'horizontalPull', 'verticalPull'])
+    .optional(),
 });
 
 export const leverMeasurementSchema = z.object({
@@ -162,6 +165,7 @@ export const blockStartSchema = z.object({
   pillar,
   plannedWeeks: z.number().int().min(2).max(16),
   metricUnderTest: fitnessMetric,
+  baselineValue: z.number().optional(),
   preRegisteredThreshold: z.object({
     metric: fitnessMetric,
     direction: z.enum(['increase', 'decrease']),

@@ -94,7 +94,12 @@ export function projectState(seed: UserState, events: EngineEvent[], today: IsoD
   return state;
 }
 
-function field<T>(prev: Field<T>, value: T, lastUpdated: IsoDate, source: Field<T>['source']): Field<T> {
+function field<T>(
+  prev: Field<T> | null,
+  value: T,
+  lastUpdated: IsoDate,
+  source: Field<T>['source'],
+): Field<T> {
   const next: Field<T> = { ...prev, value, lastUpdated, source };
   return next;
 }
@@ -381,12 +386,22 @@ function projectBlock(
         e.occurredAt <= lastStart.occurredAt,
     );
     const lastPreStart = preStart[preStart.length - 1];
+    // Baseline resolution order: last pre-start measurement, then the value
+    // recorded on the block-start event itself (what the threshold was
+    // validated against), then the seed. Registration is refused upstream
+    // when no baseline exists at all, so the final fallback is unreachable
+    // for events written by the adapters.
+    const seedMaxStrengthValues = Object.values(seedFitness.maxStrength)
+      .filter((f): f is NonNullable<typeof f> => f !== null)
+      .map((f) => f.value);
     const baselineAtStart =
       lastPreStart && lastPreStart.type === 'fitness-measurement' && metric !== 'maxStrength'
         ? lastPreStart.value
-        : metric === 'maxStrength'
-          ? mean(Object.values(seedFitness.maxStrength).map((f) => f.value))
-          : seedFitness[metric].value;
+        : lastStart.baselineValue !== undefined
+          ? lastStart.baselineValue
+          : metric === 'maxStrength'
+            ? mean(seedMaxStrengthValues.length > 0 ? seedMaxStrengthValues : [0])
+            : seedFitness[metric]?.value ?? 0;
     state.block = {
       activePillar: lastStart.pillar,
       startDate: day(lastStart.occurredAt),

@@ -147,7 +147,7 @@ describe('layer 1 — injury and illness gate', () => {
 describe('layer 2 — levers (I6: plan untouched)', () => {
   it('every surface carries trainingPlanUnchanged: true', () => {
     const s = baseline();
-    s.levers.homeSBP7d.value = 133;
+    s.levers.homeSBP7d!.value = 133;
     s.recovery.sleepMean7d.value = 6.5;
     const r = layer2Levers(s, '2026-07-27');
     expect(r.surfaces.length).toBeGreaterThanOrEqual(2);

@@ -158,7 +158,7 @@ describe('projection semantics', () => {
     expect(s.block?.baselineAtStart).toBe(52.5); // baseline is the pre-start value, not the retest
     expect(s.block?.preRegisteredThreshold?.value).toBe(58.5);
     expect(s.block?.pendingRetest?.value).toBe(59.5);
-    expect(s.fitness.vo2max.value).toBe(59.5); // measurement also updates fitness
+    expect(s.fitness.vo2max?.value).toBe(59.5); // measurement also updates fitness
 
     const d = decide(s, '2026-08-17');
     // Retest TE defaults to 4% of 59.5 => SDC 6.59; Δ+7.0 clears it and the threshold.
