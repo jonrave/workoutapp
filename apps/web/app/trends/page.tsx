@@ -1,10 +1,27 @@
 import type { Metadata } from 'next';
+import { CONSTANTS } from '@peakspan/engine';
 import { currentState, readEvents } from '../../lib/data';
 import { TrendChart, type TrendPoint } from '../../components/TrendChart';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = { title: 'Trends' };
+
+/**
+ * Daily signal → rolling 7-day mean series, matching the projector's window
+ * (I5: single days never enter the engine; neither should the eye lead with
+ * them).
+ */
+function rolling7d(daily: TrendPoint[], decimals: number): TrendPoint[] {
+  const f = 10 ** decimals;
+  return daily.map((p, i) => {
+    const window = daily.filter(
+      (q, j) => j <= i && (Date.parse(p.date) - Date.parse(q.date)) / 86_400_000 < 7,
+    );
+    const mean = window.reduce((s, q) => s + q.value, 0) / window.length;
+    return { date: p.date, value: Math.round(mean * f) / f };
+  });
+}
 
 export default async function TrendsPage() {
   const [state, events] = await Promise.all([currentState(), readEvents()]);
@@ -39,6 +56,26 @@ export default async function TrendsPage() {
   if (vo2.length === 0 && state.fitness.vo2max !== null) {
     vo2.push({ date: state.fitness.vo2max.lastUpdated, value: state.fitness.vo2max.value });
   }
+
+  const signalSeries = (signal: string): TrendPoint[] =>
+    series((e) =>
+      e.type === 'recovery-signal' && e.signal === signal
+        ? { date: e.occurredAt.slice(0, 10), value: e.value }
+        : null,
+    );
+  const hrv7d = rolling7d(signalSeries('hrvLnRmssd'), 3);
+  const rhr7d = rolling7d(signalSeries('restingHr'), 1);
+  const sleep7d = rolling7d(signalSeries('sleepDurationHours'), 2);
+
+  const hrvBaseline = state.recovery.hrvBaseline60d;
+  const hrvSD = state.recovery.hrvBaselineSD;
+  const hrvFlagLine =
+    hrvBaseline && hrvSD
+      ? {
+          value: Math.round((hrvBaseline.value - CONSTANTS.HRV_FLAG_SD * hrvSD.value) * 1000) / 1000,
+          label: 'flag threshold',
+        }
+      : undefined;
 
   const empty = (what: string) => (
     <p className="muted">No {what} on record yet — record one and the chart draws itself.</p>
@@ -78,6 +115,54 @@ export default async function TrendsPage() {
           />
         ) : (
           empty('waist measurement')
+        )}
+      </section>
+      <section className="card">
+        <h2>HRV — 7-day rolling mean (ln rMSSD)</h2>
+        {hrv7d.length > 0 ? (
+          <TrendChart
+            title="HRV 7-day mean"
+            unit="ln rMSSD"
+            points={hrv7d}
+            typicalError={0}
+            {...(hrvFlagLine ? { refLine: hrvFlagLine } : {})}
+            caption={
+              hrvFlagLine
+                ? `Dashed line = your 60-day baseline − ${CONSTANTS.HRV_FLAG_SD} SD (${hrvFlagLine.value}). The engine flags only when the 7-day mean sits below it, sustained — one low morning changes nothing (I5).`
+                : 'Rolling 7-day mean. The flag threshold appears once a 60-day baseline accumulates (I5).'
+            }
+          />
+        ) : (
+          empty('HRV reading — sync a device or log one')
+        )}
+      </section>
+      <section className="card">
+        <h2>Resting HR — 7-day rolling mean</h2>
+        {rhr7d.length > 0 ? (
+          <TrendChart
+            title="Resting HR 7-day mean"
+            unit="bpm"
+            points={rhr7d}
+            typicalError={0}
+            caption="Rolling 7-day mean of nightly resting HR. Corroborates the HRV flag; never acts alone."
+          />
+        ) : (
+          empty('resting HR reading')
+        )}
+      </section>
+      <section className="card">
+        <h2>Sleep — 7-day rolling mean</h2>
+        {sleep7d.length > 0 ? (
+          <TrendChart
+            title="Sleep 7-day mean"
+            unit="h"
+            points={sleep7d}
+            typicalError={0}
+            refLine={{ value: CONSTANTS.SLEEP_LEVER_HOURS, label: 'load-increase block' }}
+            caption="Below the dashed line the engine blocks any increase in training load — adding sleep beats adding sessions (§5)."
+          />
+        ) : (
+          empty('sleep reading')
         )}
       </section>
       <section className="card">

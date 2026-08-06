@@ -85,6 +85,7 @@ export function projectState(seed: UserState, events: EngineEvent[], today: IsoD
   const ordered = [...events].sort((a, b) => (a.occurredAt < b.occurredAt ? -1 : 1));
 
   const seedFitness = structuredClone(seed.fitness);
+  projectProfileAndPlan(state, ordered);
   projectRecovery(state, ordered, today);
   projectLoadAndTissue(state, ordered, today);
   projectFitness(state, ordered);
@@ -102,6 +103,24 @@ function field<T>(
 ): Field<T> {
   const next: Field<T> = { ...prev, value, lastUpdated, source };
   return next;
+}
+
+/**
+ * Declared facts overlay: profile updates apply their partial fields in log
+ * order; a plan update replaces the week structure wholesale and stamps
+ * `lastChanged`. Declared facts carry no SDC gate — they are not signals.
+ */
+function projectProfileAndPlan(state: UserState, events: EngineEvent[]): void {
+  for (const e of events) {
+    if (e.type === 'profile-update') {
+      Object.assign(state.profile, structuredClone(e.fields));
+    } else if (e.type === 'plan-update') {
+      state.standingPlan = {
+        weekStructure: structuredClone(e.weekStructure),
+        lastChanged: day(e.occurredAt),
+      };
+    }
+  }
 }
 
 function projectRecovery(state: UserState, events: EngineEvent[], today: IsoDate): void {

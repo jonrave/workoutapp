@@ -185,6 +185,54 @@ export const retestSchema = z.object({
   typicalError: z.number().positive().optional(),
 });
 
+const dayOfWeek = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
+const timeOfDay = z.enum(['morning', 'midday', 'evening']);
+const slot = z
+  .string()
+  .refine(
+    (s) => {
+      const [d, t] = s.split('-');
+      return dayOfWeek.safeParse(d).success && timeOfDay.safeParse(t).success;
+    },
+    { message: 'expected <day>-<timeOfDay>, e.g. mon-morning' },
+  );
+
+export const plannedSessionSchema = z.object({
+  slot,
+  pillar,
+  modality,
+  description: z.string().min(1),
+  durationMinutes: z.number().min(5).max(240),
+  targetSRPE: z.number().min(0).max(10),
+});
+
+export const profileUpdateSchema = z.object({
+  ...base,
+  type: z.literal('profile-update'),
+  fields: z
+    .object({
+      age: z.number().int().min(10).max(110),
+      trainingAgeYears: z.number().min(0).max(90),
+      vo2CapableModalities: z.array(modality),
+      equipment: z.array(z.string().min(1)),
+      weeklyBudgetMinutes: z.number().min(30).max(2400),
+      hardConstraints: z.array(z.string().min(1)),
+    })
+    .partial(),
+});
+
+export const planUpdateSchema = z.object({
+  ...base,
+  type: z.literal('plan-update'),
+  weekStructure: z
+    .array(plannedSessionSchema)
+    .min(1)
+    .refine((ws) => new Set(ws.map((s) => s.slot)).size === ws.length, {
+      message: 'each slot may appear at most once in the week structure',
+    }),
+  note: z.string().optional(),
+});
+
 export const engineEventSchema = z.discriminatedUnion('type', [
   recoverySignalSchema,
   fitnessMeasurementSchema,
@@ -197,6 +245,8 @@ export const engineEventSchema = z.discriminatedUnion('type', [
   interruptionSchema,
   blockStartSchema,
   retestSchema,
+  profileUpdateSchema,
+  planUpdateSchema,
 ]);
 
 /** Validate an unknown payload as an EngineEvent; throws on failure. */

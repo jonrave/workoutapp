@@ -12,6 +12,7 @@ import type {
   FitnessMetric,
   Modality,
   Pillar,
+  PlannedSession,
   PreRegisteredThreshold,
   Slot,
   StrengthPattern,
@@ -172,6 +173,35 @@ export interface RetestEvent extends BaseEvent {
   typicalError?: number;
 }
 
+/**
+ * A declared change to profile facts. Partial: only the fields present are
+ * overlaid on the seed profile. These are declared facts, not noisy signals —
+ * the SDC gate does not apply (same footing as TemporaryConstraint).
+ */
+export interface ProfileUpdateEvent extends BaseEvent {
+  type: 'profile-update';
+  fields: Partial<{
+    age: number;
+    trainingAgeYears: number;
+    /** I9 hard constraint: interval work only on these. */
+    vo2CapableModalities: Modality[];
+    equipment: string[];
+    weeklyBudgetMinutes: number;
+    hardConstraints: string[];
+  }>;
+}
+
+/**
+ * A declared replacement of the standing plan's week structure. The whole
+ * structure is recorded (not a diff) so state projected from the log alone
+ * reproduces the plan exactly; `lastChanged` becomes this event's day.
+ */
+export interface PlanUpdateEvent extends BaseEvent {
+  type: 'plan-update';
+  weekStructure: PlannedSession[];
+  note?: string;
+}
+
 export type EngineEvent =
   | RecoverySignalEvent
   | FitnessMeasurementEvent
@@ -183,4 +213,6 @@ export type EngineEvent =
   | InjuryEvent
   | InterruptionEvent
   | BlockStartEvent
-  | RetestEvent;
+  | RetestEvent
+  | ProfileUpdateEvent
+  | PlanUpdateEvent;

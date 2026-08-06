@@ -8,14 +8,68 @@ import pg from 'pg';
 import type { EngineEvent } from '@peakspan/engine';
 import { ImmutabilityViolation, type EventLog } from './log';
 
+/**
+ * Idempotent copy of migrations/001_init.sql (kept in sync by
+ * store.test.ts). Embedded so a fresh deployment self-migrates on first
+ * touch: attaching a database is the only manual step. Safe to run on every
+ * cold start — every statement is IF NOT EXISTS / conditional.
+ */
+const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS events (
+  id          text PRIMARY KEY,
+  type        text NOT NULL,
+  occurred_at timestamptz NOT NULL,
+  recorded_at timestamptz NOT NULL,
+  payload     jsonb NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS events_recorded_at_idx ON events (recorded_at);
+CREATE INDEX IF NOT EXISTS events_type_idx ON events (type);
+
+CREATE TABLE IF NOT EXISTS pre_registered_thresholds (
+  block_event_id text PRIMARY KEY REFERENCES events (id),
+  metric         text NOT NULL,
+  direction      text NOT NULL CHECK (direction IN ('increase', 'decrease')),
+  value          double precision NOT NULL,
+  unit           text NOT NULL,
+  registered_at  timestamptz NOT NULL
+);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'peakspan_app') THEN
+    REVOKE UPDATE, DELETE, TRUNCATE ON events FROM peakspan_app;
+    REVOKE UPDATE, DELETE, TRUNCATE ON pre_registered_thresholds FROM peakspan_app;
+    GRANT SELECT, INSERT ON events, pre_registered_thresholds TO peakspan_app;
+  END IF;
+END $$;
+`;
+
 export class PostgresEventLog implements EventLog {
+  private schemaReady: Promise<void> | null = null;
+
   constructor(private readonly pool: pg.Pool) {}
 
   static fromConnectionString(connectionString: string): PostgresEventLog {
     return new PostgresEventLog(new pg.Pool({ connectionString }));
   }
 
+  /** Runs once per process; a failure resets so the next call retries. */
+  private ensureSchema(): Promise<void> {
+    if (!this.schemaReady) {
+      this.schemaReady = this.pool
+        .query(SCHEMA_SQL)
+        .then(() => undefined)
+        .catch((err) => {
+          this.schemaReady = null;
+          throw err;
+        });
+    }
+    return this.schemaReady;
+  }
+
   async append(event: EngineEvent): Promise<void> {
+    await this.ensureSchema();
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
@@ -57,6 +111,7 @@ export class PostgresEventLog implements EventLog {
   }
 
   async read(sinceRecordedAt?: string): Promise<EngineEvent[]> {
+    await this.ensureSchema();
     const result = sinceRecordedAt
       ? await this.pool.query(
           'SELECT payload FROM events WHERE recorded_at > $1 ORDER BY recorded_at, id',

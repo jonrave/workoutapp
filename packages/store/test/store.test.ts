@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { decide, type EngineEvent, type UserState } from '@peakspan/engine';
-import { activity, illness, recoverySignal, startBlock, submitRetest, type EventContext } from '@peakspan/adapters';
+import { activity, illness, planUpdate, profileUpdate, recoverySignal, startBlock, submitRetest, validateEvent, type EventContext } from '@peakspan/adapters';
 import { ImmutabilityViolation, InMemoryEventLog, projectState } from '../src/index';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
@@ -192,5 +192,91 @@ describe('projection semantics', () => {
     const s = projectState(seed(), events, '2026-07-28');
     expect(s.history.adherenceBySlot['mon-morning']).toBe(1);
     expect(s.history.adherenceBySlot['thu-evening']).toBe(0);
+  });
+});
+
+describe('declared facts: profile and plan updates', () => {
+  it('profile-update overlays only the fields present, in log order', () => {
+    const c = ctx();
+    const events: EngineEvent[] = [
+      profileUpdate({ fields: { weeklyBudgetMinutes: 300 }, occurredAt: '2026-07-01T09:00:00Z' }, c),
+      profileUpdate(
+        { fields: { vo2CapableModalities: ['run', 'airBike', 'row'] }, occurredAt: '2026-07-10T09:00:00Z' },
+        c,
+      ),
+    ];
+    const s = projectState(seed(), events, '2026-07-28');
+    expect(s.profile.weeklyBudgetMinutes).toBe(300);
+    expect(s.profile.vo2CapableModalities).toEqual(['run', 'airBike', 'row']);
+    // Untouched fields keep their seed values.
+    expect(s.profile.age).toBe(seed().profile.age);
+    expect(s.profile.equipment).toEqual(seed().profile.equipment);
+  });
+
+  it('plan-update replaces the week structure wholesale and stamps lastChanged', () => {
+    const c = ctx();
+    const structure = [
+      {
+        slot: 'tue-evening' as const,
+        pillar: 'zone2' as const,
+        modality: 'run' as const,
+        description: 'Easy run',
+        durationMinutes: 45,
+        targetSRPE: 4,
+      },
+    ];
+    const s = projectState(
+      seed(),
+      [planUpdate({ weekStructure: structure, occurredAt: '2026-07-15T09:00:00Z' }, c)],
+      '2026-07-28',
+    );
+    expect(s.standingPlan.weekStructure).toEqual(structure);
+    expect(s.standingPlan.lastChanged).toBe('2026-07-15');
+  });
+
+  it('validateEvent accepts the new kinds and rejects duplicate slots', () => {
+    const c = ctx();
+    const ok = planUpdate(
+      {
+        weekStructure: [
+          { slot: 'mon-morning', pillar: 'maxStrength', modality: 'lift', description: 'Lift', durationMinutes: 60, targetSRPE: 7 },
+        ],
+        occurredAt: '2026-07-15T09:00:00Z',
+      },
+      c,
+    );
+    expect(validateEvent(ok)).toEqual(ok);
+    const dup = planUpdate(
+      {
+        weekStructure: [
+          { slot: 'mon-morning', pillar: 'maxStrength', modality: 'lift', description: 'Lift', durationMinutes: 60, targetSRPE: 7 },
+          { slot: 'mon-morning', pillar: 'zone2', modality: 'run', description: 'Run', durationMinutes: 40, targetSRPE: 4 },
+        ],
+        occurredAt: '2026-07-15T09:00:00Z',
+      },
+      c,
+    );
+    expect(() => validateEvent(dup)).toThrow(/at most once/);
+  });
+});
+
+describe('embedded schema stays in sync with the migration file', () => {
+  it('postgres.ts SCHEMA_SQL contains every statement of 001_init.sql', () => {
+    const migration = readFileSync(`${root}/packages/store/migrations/001_init.sql`, 'utf8');
+    const embedded = readFileSync(
+      fileURLToPath(new URL('../src/postgres.ts', import.meta.url)),
+      'utf8',
+    );
+    // Compare statement-by-statement, ignoring whitespace and SQL comments.
+    const normalize = (sql: string) =>
+      sql
+        .replace(/--[^\n]*/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    for (const statement of migration.split(/;\s*\n\s*\n/)) {
+      const wanted = normalize(statement);
+      if (!wanted) continue;
+      expect(normalize(embedded)).toContain(wanted);
+    }
   });
 });

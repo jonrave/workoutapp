@@ -7,6 +7,7 @@ import type { Metadata } from 'next';
 import { currentState } from '../../lib/data';
 import { modalityLabel } from '../../lib/labels';
 import { InjuryIntake, LeverIntake, MeasurementIntake } from './IntakeForms';
+import { ProfileForm } from './ProfileForm';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +59,23 @@ export default async function OnboardingPage() {
           </tbody>
         </table>
         </div>
+        <details className="trace" style={{ marginTop: '0.6rem' }}>
+          <summary>Edit profile</summary>
+          <p className="muted">
+            Declared facts, recorded to the log as a profile-update event — the seed is never
+            edited in place.
+          </p>
+          <ProfileForm
+            initial={{
+              age: p.age,
+              trainingAgeYears: p.trainingAgeYears,
+              weeklyBudgetMinutes: p.weeklyBudgetMinutes,
+              vo2CapableModalities: p.vo2CapableModalities,
+              equipment: p.equipment,
+              hardConstraints: p.hardConstraints,
+            }}
+          />
+        </details>
       </section>
 
       <section className="card">

@@ -21,6 +21,9 @@ import type {
   MissedSessionEvent,
   Modality,
   Pillar,
+  PlannedSession,
+  PlanUpdateEvent,
+  ProfileUpdateEvent,
   RecoverySignalEvent,
   RetestEvent,
   Slot,
@@ -305,6 +308,36 @@ export function interruption(
     startDate: input.startDate,
     endDate: input.endDate,
   };
+}
+
+export function profileUpdate(
+  input: { fields: ProfileUpdateEvent['fields']; occurredAt: IsoDateTime },
+  ctx: EventContext = defaultContext,
+): ProfileUpdateEvent {
+  return {
+    id: ctx.id(),
+    type: 'profile-update',
+    occurredAt: input.occurredAt,
+    recordedAt: ctx.now(),
+    source: 'user-reported',
+    fields: input.fields,
+  };
+}
+
+export function planUpdate(
+  input: { weekStructure: PlannedSession[]; occurredAt: IsoDateTime; note?: string },
+  ctx: EventContext = defaultContext,
+): PlanUpdateEvent {
+  const event: PlanUpdateEvent = {
+    id: ctx.id(),
+    type: 'plan-update',
+    occurredAt: input.occurredAt,
+    recordedAt: ctx.now(),
+    source: 'user-reported',
+    weekStructure: input.weekStructure,
+  };
+  if (input.note !== undefined) event.note = input.note;
+  return event;
 }
 
 export class IllPosedThresholdError extends Error {

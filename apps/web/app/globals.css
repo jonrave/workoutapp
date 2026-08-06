@@ -82,6 +82,48 @@ main {
   overflow-x: auto;
 }
 
+/* Inline "log as it actually went" editor inside a session row. */
+.adjust-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+  margin-top: 0.4rem;
+}
+
+.adjust-row label {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.8rem;
+  color: var(--ink-secondary);
+}
+
+.adjust-row input {
+  width: 5.5rem;
+}
+
+fieldset.checkgroup {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+}
+
+fieldset.checkgroup legend {
+  font-size: 0.85rem;
+  color: var(--ink-secondary);
+  padding: 0 0.3rem;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+}
+
 .card {
   background: var(--surface);
   border: 1px solid var(--border);

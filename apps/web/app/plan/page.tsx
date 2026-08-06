@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { currentState } from '../../lib/data';
 import { modalityLabel, pillarLabel, slotLabel } from '../../lib/labels';
+import { PlanEditor } from './PlanEditor';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,25 @@ export default async function PlanPage() {
           Adherence is learned from outcomes, never declared. Slots that complete rarely stop
           receiving hard work (§3).
         </p>
+      </section>
+      <section className="card">
+        <details className="trace">
+          <summary>Edit standing plan</summary>
+          <p className="muted">
+            Changes here are declared facts — your actual week, recorded to the log as a
+            plan-update event. Day-to-day adjustments stay the engine&apos;s job.
+          </p>
+          <PlanEditor
+            initial={plan.weekStructure.map((s) => ({
+              slot: s.slot,
+              pillar: s.pillar,
+              modality: s.modality,
+              description: s.description,
+              durationMinutes: s.durationMinutes,
+              targetSRPE: s.targetSRPE,
+            }))}
+          />
+        </details>
       </section>
     </>
   );

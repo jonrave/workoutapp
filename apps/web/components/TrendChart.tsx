@@ -17,17 +17,24 @@ const BAND = 'rgba(100, 116, 139, 0.14)';
 const GRID = '#e5e7eb';
 const INK_MUTED = '#6b7280';
 const INK = '#374151';
+const REF = '#b45309';
 
 export function TrendChart({
   title,
   unit,
   points,
   typicalError,
+  refLine,
+  caption,
 }: {
   title: string;
   unit: string;
   points: TrendPoint[];
   typicalError: number;
+  /** Horizontal threshold line (e.g. an engine flag boundary) drawn in the warn tone. */
+  refLine?: { value: number; label: string };
+  /** Overrides the default SDC caption — for series whose meaning is a flag line, not a noise band. */
+  caption?: string;
 }) {
   const W = 640;
   const H = 220;
@@ -38,8 +45,8 @@ export function TrendChart({
   const band = sdc(typicalError);
   const values = points.map((p) => p.value);
   const latest = points[points.length - 1];
-  const lo = Math.min(...values, (latest?.value ?? 0) - band);
-  const hi = Math.max(...values, (latest?.value ?? 0) + band);
+  const lo = Math.min(...values, (latest?.value ?? 0) - band, refLine?.value ?? Infinity);
+  const hi = Math.max(...values, (latest?.value ?? 0) + band, refLine?.value ?? -Infinity);
   const pad = (hi - lo) * 0.15 || 1;
   const yMin = lo - pad;
   const yMax = hi + pad;
@@ -63,7 +70,7 @@ export function TrendChart({
           </g>
         ))}
         {/* SDC band around the latest estimate: deltas inside it are "no change detected" (I3) */}
-        {latest && (
+        {latest && band > 0 && (
           <rect
             x={M.left}
             width={iw}
@@ -71,6 +78,23 @@ export function TrendChart({
             height={Math.max(2, y(latest.value - band) - y(latest.value + band))}
             fill={BAND}
           />
+        )}
+        {/* threshold reference line, e.g. the engine's flag boundary */}
+        {refLine && (
+          <g>
+            <line
+              x1={M.left}
+              x2={W - M.right}
+              y1={y(refLine.value)}
+              y2={y(refLine.value)}
+              stroke={REF}
+              strokeWidth={1.5}
+              strokeDasharray="5 4"
+            />
+            <text x={W - M.right - 4} y={y(refLine.value) - 5} textAnchor="end" fontSize={11} fill={REF}>
+              {refLine.label}
+            </text>
+          </g>
         )}
         <path d={path} fill="none" stroke={SERIES} strokeWidth={2} strokeLinejoin="round" />
         {points.map((p, i) => (
@@ -97,8 +121,8 @@ export function TrendChart({
         )}
       </svg>
       <figcaption className="figure-caption">
-        Shaded band = ± SDC ({band.toFixed(1)} {unit}): deltas inside it are “no change detected”
-        and never trigger a plan change.
+        {caption ??
+          `Shaded band = ± SDC (${band.toFixed(1)} ${unit}): deltas inside it are “no change detected” and never trigger a plan change.`}
       </figcaption>
     </figure>
   );

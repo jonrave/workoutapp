@@ -5,6 +5,8 @@
  */
 import type { Metadata } from 'next';
 import { currentDecision, todayIso } from '../../lib/data';
+import { SessionLogger } from '../../components/SessionLogger';
+import { MorningCheckIn } from '../log/LogForms';
 import {
   gateLabel,
   modalityLabel,
@@ -30,9 +32,21 @@ const LAYER_NAMES: Record<number, string> = {
   6: 'noise gate',
 };
 
+const DAY_PREFIX = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
 export default async function TodayPage() {
-  const { decision } = await currentDecision();
+  const { state, decision } = await currentDecision();
   const noChange = decision.noiseGate.outcome === 'no-change-detected';
+  const dayPrefix = DAY_PREFIX[new Date(`${todayIso()}T00:00:00Z`).getUTCDay()];
+  const todaysPlanned = state.standingPlan.weekStructure
+    .filter((s) => s.slot.startsWith(`${dayPrefix}-`))
+    .map((s) => ({
+      slot: s.slot,
+      description: s.description,
+      modality: s.modality,
+      durationMinutes: s.durationMinutes,
+      targetSRPE: s.targetSRPE,
+    }));
 
   return (
     <>
@@ -124,6 +138,22 @@ export default async function TodayPage() {
           <p className="muted">Nothing on the standing plan today.</p>
         </section>
       )}
+
+      {decision.sessions !== null && todaysPlanned.length > 0 && (
+        <section className="card">
+          <h2>Log it</h2>
+          <p className="muted">
+            When you&apos;re done — as planned, or as it actually went. Actual sRPE is what the
+            load model runs on (I7).
+          </p>
+          <SessionLogger sessions={todaysPlanned} />
+        </section>
+      )}
+
+      <section className="card">
+        <h2>Morning check-in</h2>
+        <MorningCheckIn />
+      </section>
 
       {decision.gates.length > 0 && (
         <section className="card">

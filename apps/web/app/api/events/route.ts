@@ -13,9 +13,12 @@ import {
   leverMeasurement,
   fitnessMeasurement,
   missedSession,
+  planUpdate,
+  profileUpdate,
   subjective,
   validateEvent,
 } from '@peakspan/adapters';
+import type { PlannedSession, ProfileUpdateEvent } from '@peakspan/engine';
 import type { EngineEvent } from '@peakspan/engine';
 import { appendEvent } from '../../../lib/data';
 
@@ -76,6 +79,37 @@ const bodySchema = z.discriminatedUnion('kind', [
     occurredAt: z.string(),
     source: z.enum(['measured-lab', 'measured-field', 'user-reported']),
   }),
+  z.object({
+    kind: z.literal('profile-update'),
+    occurredAt: z.string(),
+    fields: z
+      .object({
+        age: z.number().int().min(10).max(110),
+        trainingAgeYears: z.number().min(0).max(90),
+        vo2CapableModalities: z.array(
+          z.enum(['run', 'airBike', 'spinBike', 'row', 'swim', 'hike', 'lift', 'other']),
+        ),
+        equipment: z.array(z.string().min(1)),
+        weeklyBudgetMinutes: z.number().min(30).max(2400),
+        hardConstraints: z.array(z.string().min(1)),
+      })
+      .partial(),
+  }),
+  z.object({
+    kind: z.literal('plan-update'),
+    occurredAt: z.string(),
+    weekStructure: z.array(
+      z.object({
+        slot: z.string(),
+        pillar: z.enum(['maxStrength', 'vo2max', 'zone2', 'power', 'mobility']),
+        modality: z.enum(['run', 'airBike', 'spinBike', 'row', 'swim', 'hike', 'lift', 'other']),
+        description: z.string().min(1),
+        durationMinutes: z.number().min(5).max(240),
+        targetSRPE: z.number().min(0).max(10),
+      }),
+    ),
+    note: z.string().optional(),
+  }),
 ]);
 
 export async function POST(request: Request) {
@@ -127,6 +161,19 @@ export async function POST(request: Request) {
       event = leverMeasurement(rest);
       break;
     }
+    case 'profile-update':
+      event = profileUpdate({
+        fields: body.fields as ProfileUpdateEvent['fields'],
+        occurredAt: body.occurredAt,
+      });
+      break;
+    case 'plan-update':
+      event = planUpdate({
+        weekStructure: body.weekStructure as PlannedSession[],
+        occurredAt: body.occurredAt,
+        ...(body.note !== undefined ? { note: body.note } : {}),
+      });
+      break;
   }
 
   try {

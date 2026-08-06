@@ -2,7 +2,8 @@ import type { Metadata } from 'next';
 import { currentState } from '../../lib/data';
 import { StorageNotice } from '../../components/StorageNotice';
 import { DeviceSync } from '../../components/DeviceSync';
-import { FreeTextLog, MorningCheckIn, QuickLog } from './LogForms';
+import { SessionLogger } from '../../components/SessionLogger';
+import { FreeTextLog, MorningCheckIn } from './LogForms';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ export default async function LogPage() {
       <section className="card">
         <h2>Planned sessions</h2>
         <p className="muted">Missed sessions feed learned adherence. No streaks, no guilt (§9).</p>
-        <QuickLog slots={slots} />
+        <SessionLogger sessions={slots} />
       </section>
       <section className="card">
         <h2>Morning check-in</h2>

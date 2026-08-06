@@ -6,7 +6,7 @@
  * log seeded with a few demo measurements backs the local demo.
  */
 import { decide, type Decision, type EngineEvent, type UserState } from '@peakspan/engine';
-import { fitnessMeasurement, leverMeasurement } from '@peakspan/adapters';
+import { fitnessMeasurement, leverMeasurement, recoverySignal } from '@peakspan/adapters';
 import { InMemoryEventLog, projectState, type EventLog } from '@peakspan/store';
 // Static import, not a runtime readFileSync: the seed must be compiled into
 // the bundle so it survives serverless deployment, where the repo's fixtures
@@ -40,6 +40,23 @@ async function seedDemoEvents(log: EventLog): Promise<void> {
         ctx,
       ),
     );
+  }
+
+  // 60 days of nightly wearable signals so the recovery trend charts (and the
+  // I5 baselines derived from them) have something to draw. Deterministic:
+  // a gentle weekly wave plus a fixed pseudo-noise term, no RNG.
+  for (let i = 0; i < 60; i++) {
+    const date = new Date(Date.UTC(2026, 5, 8 + i, 6)).toISOString();
+    const wave = Math.sin((i / 7) * Math.PI);
+    const jitter = ((i * 37) % 10) / 10 - 0.45; // fixed sequence in [-0.45, 0.45]
+    const signals = [
+      { signal: 'hrvLnRmssd' as const, value: Math.round((4.25 + 0.08 * wave + 0.05 * jitter) * 1000) / 1000 },
+      { signal: 'restingHr' as const, value: Math.round((47 - 1.5 * wave + jitter) * 10) / 10 },
+      { signal: 'sleepDurationHours' as const, value: Math.round((7.3 + 0.4 * wave + 0.5 * jitter) * 100) / 100 },
+    ];
+    for (const s of signals) {
+      await log.append(recoverySignal({ ...s, occurredAt: date, source: 'device-raw' }, ctx));
+    }
   }
 }
 

@@ -41,16 +41,14 @@ instance. The app says so in a banner rather than silently losing writes.
    Postgres does).
 2. Vercel injects `DATABASE_URL` automatically for its own integration; for an
    external database add it under **Settings → Environment Variables**.
-3. Run the migration once against that database:
 
-   ```sh
-   psql "$DATABASE_URL" -f packages/store/migrations/001_init.sql
-   ```
-
-   It creates the append-only `events` table and the INSERT-only
-   `pre_registered_thresholds` table, and revokes `UPDATE`/`DELETE` from the
-   `peakspan_app` role if that role exists (I10: a registered threshold can
-   never be edited after the fact).
+That's it — the app migrates itself. On first touch of the database it runs
+the idempotent schema (embedded in `packages/store/src/postgres.ts` and kept
+in sync with `packages/store/migrations/001_init.sql` by a test): the
+append-only `events` table and the INSERT-only `pre_registered_thresholds`
+table, revoking `UPDATE`/`DELETE` from the `peakspan_app` role if that role
+exists (I10: a registered threshold can never be edited after the fact).
+Running the migration manually with `psql` still works and is equivalent.
 
 **Use a pooled connection string.** Serverless functions open many short-lived
 connections; Neon's pooler endpoint or Supabase's `6543` pooler port avoids
