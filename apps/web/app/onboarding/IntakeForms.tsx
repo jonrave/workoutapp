@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { leverLabel, metricLabel, sourceLabel, tissueLabel } from '../../lib/labels';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -20,6 +21,7 @@ export function MeasurementIntake() {
   const [value, setValue] = useState('');
   const [date, setDate] = useState(today());
   const [source, setSource] = useState<'measured-lab' | 'measured-field'>('measured-field');
+  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<NoticeState>(null);
 
   const units: Record<string, string> = {
@@ -36,19 +38,24 @@ export function MeasurementIntake() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const result = await post({
-      kind: 'fitness-measurement',
-      metric,
-      value: Number(value),
-      unit: units[metric],
-      occurredAt: `${date}T09:00:00Z`,
-      source,
-    });
-    setNotice(
-      result.error
-        ? { kind: 'error', text: result.error }
-        : { kind: 'ok', text: 'Measurement recorded — typical error applied from the §8 table.' },
-    );
+    setBusy(true);
+    try {
+      const result = await post({
+        kind: 'fitness-measurement',
+        metric,
+        value: Number(value),
+        unit: units[metric],
+        occurredAt: `${date}T09:00:00Z`,
+        source,
+      });
+      setNotice(
+        result.error
+          ? { kind: 'error', text: result.error }
+          : { kind: 'ok', text: 'Measurement recorded — typical error applied from the §8 table.' },
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -57,7 +64,9 @@ export function MeasurementIntake() {
         Metric
         <select value={metric} onChange={(e) => setMetric(e.target.value)}>
           {Object.keys(units).map((m) => (
-            <option key={m}>{m}</option>
+            <option key={m} value={m}>
+              {metricLabel(m)}
+            </option>
           ))}
         </select>
       </label>
@@ -72,11 +81,11 @@ export function MeasurementIntake() {
       <label>
         Source
         <select value={source} onChange={(e) => setSource(e.target.value as typeof source)}>
-          <option value="measured-field">measured-field (self-administered protocol)</option>
-          <option value="measured-lab">measured-lab (supervised test)</option>
+          <option value="measured-field">{sourceLabel('measured-field')} (self-administered protocol)</option>
+          <option value="measured-lab">{sourceLabel('measured-lab')} (supervised test)</option>
         </select>
       </label>
-      <button type="submit">Record</button>
+      <button type="submit" disabled={busy}>{busy ? 'Recording…' : 'Record'}</button>
       {notice && <div className={`notice ${notice.kind}`}>{notice.text}</div>}
     </form>
   );
@@ -86,6 +95,7 @@ export function LeverIntake() {
   const [lever, setLever] = useState('apoB');
   const [value, setValue] = useState('');
   const [date, setDate] = useState(today());
+  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<NoticeState>(null);
 
   const units: Record<string, string> = {
@@ -101,19 +111,24 @@ export function LeverIntake() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const result = await post({
-      kind: 'lever-measurement',
-      lever,
-      value: Number(value),
-      unit: units[lever],
-      occurredAt: `${date}T09:00:00Z`,
-      source: lever === 'alcoholUnits' || lever === 'waistCm' ? 'user-reported' : 'measured-lab',
-    });
-    setNotice(
-      result.error
-        ? { kind: 'error', text: result.error }
-        : { kind: 'ok', text: 'Recorded with its assay date — staleness is tracked from day one.' },
-    );
+    setBusy(true);
+    try {
+      const result = await post({
+        kind: 'lever-measurement',
+        lever,
+        value: Number(value),
+        unit: units[lever],
+        occurredAt: `${date}T09:00:00Z`,
+        source: lever === 'alcoholUnits' || lever === 'waistCm' ? 'user-reported' : 'measured-lab',
+      });
+      setNotice(
+        result.error
+          ? { kind: 'error', text: result.error }
+          : { kind: 'ok', text: 'Recorded with its assay date — staleness is tracked from day one.' },
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -122,7 +137,9 @@ export function LeverIntake() {
         Lever
         <select value={lever} onChange={(e) => setLever(e.target.value)}>
           {Object.keys(units).map((l) => (
-            <option key={l}>{l}</option>
+            <option key={l} value={l}>
+              {leverLabel(l)}
+            </option>
           ))}
         </select>
       </label>
@@ -134,7 +151,7 @@ export function LeverIntake() {
         Assay / measurement date — an old value is entered as old, and shows as stale
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
-      <button type="submit">Record</button>
+      <button type="submit" disabled={busy}>{busy ? 'Recording…' : 'Record'}</button>
       {notice && <div className={`notice ${notice.kind}`}>{notice.text}</div>}
     </form>
   );
@@ -145,22 +162,28 @@ export function InjuryIntake() {
   const [severity, setSeverity] = useState<'minor' | 'moderate' | 'severe'>('moderate');
   const [date, setDate] = useState('2023-01-01');
   const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<NoticeState>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const result = await post({
-      kind: 'injury',
-      site,
-      severity,
-      occurredAt: `${date}T09:00:00Z`,
-      ...(note ? { note } : {}),
-    });
-    setNotice(
-      result.error
-        ? { kind: 'error', text: result.error }
-        : { kind: 'ok', text: 'Injury history recorded — it drives Layer 1 gating from day one.' },
-    );
+    setBusy(true);
+    try {
+      const result = await post({
+        kind: 'injury',
+        site,
+        severity,
+        occurredAt: `${date}T09:00:00Z`,
+        ...(note ? { note } : {}),
+      });
+      setNotice(
+        result.error
+          ? { kind: 'error', text: result.error }
+          : { kind: 'ok', text: 'Injury history recorded — it drives Layer 1 gating from day one.' },
+      );
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -179,7 +202,9 @@ export function InjuryIntake() {
             'shoulderOverhead',
             'connectiveHighVelocity',
           ].map((c) => (
-            <option key={c}>{c}</option>
+            <option key={c} value={c}>
+              {tissueLabel(c)}
+            </option>
           ))}
         </select>
       </label>
@@ -199,7 +224,7 @@ export function InjuryIntake() {
         Note
         <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. left biceps femoris, sprinting" />
       </label>
-      <button type="submit">Record</button>
+      <button type="submit" disabled={busy}>{busy ? 'Recording…' : 'Record'}</button>
       {notice && <div className={`notice ${notice.kind}`}>{notice.text}</div>}
     </form>
   );

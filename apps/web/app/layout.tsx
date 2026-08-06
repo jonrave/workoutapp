@@ -1,9 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { NavLinks } from '../components/NavLinks';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Peakspan',
+  title: { default: 'Peakspan', template: '%s · Peakspan' },
   description: 'Lifelong training capacity, decided by a pure engine.',
 };
 
@@ -13,13 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <nav className="top">
           <span className="brand">Peakspan</span>
-          <Link href="/today">Today</Link>
-          <Link href="/log">Log</Link>
-          <Link href="/levers">Levers</Link>
-          <Link href="/plan">Plan</Link>
-          <Link href="/blocks">Blocks</Link>
-          <Link href="/trends">Trends</Link>
-          <Link href="/onboarding">Intake</Link>
+          <NavLinks />
         </nav>
         <main>{children}</main>
       </body>

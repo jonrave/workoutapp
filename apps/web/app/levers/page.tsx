@@ -2,11 +2,15 @@
  * The lever panel (§5, I6). Values, staleness, and flags — with the single
  * next action per lever. Nothing here ever touches the training plan.
  */
+import type { Metadata } from 'next';
 import { CONSTANTS, daysBetween, layer2Levers } from '@peakspan/engine';
 import type { Field } from '@peakspan/engine';
 import { currentState, todayIso } from '../../lib/data';
+import { leverLabel, rationaleText, sourceLabel, surfaceLabel } from '../../lib/labels';
 
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = { title: 'Levers' };
 
 const NEXT_ACTIONS: Record<string, string> = {
   bloodPressure: 'Discuss with a clinician; repeat the 7-day home protocol in 4 weeks.',
@@ -54,10 +58,10 @@ export default async function LeversPage() {
             {surfaces.map((s) => (
               <li key={s.lever} style={{ marginBottom: '0.4rem' }}>
                 <span className={`pill ${s.priority === 'highest-non-emergent' ? 'stop' : 'flag'}`}>
-                  {s.lever}
+                  {surfaceLabel(s.lever)}
                 </span>{' '}
                 {NEXT_ACTIONS[s.lever] ?? ''}
-                <div className="muted">{s.trigger.code}</div>
+                <div className="muted">{rationaleText(s.trigger)}</div>
               </li>
             ))}
           </ul>
@@ -72,40 +76,42 @@ export default async function LeversPage() {
 
       <section className="card">
         <h2>All levers</h2>
-        <table className="plain">
-          <thead>
-            <tr>
-              <th>Lever</th>
-              <th>Value</th>
-              <th>Measured</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ name, field, cadence }) => {
-              const age = field ? daysBetween(field.lastUpdated, today) : null;
-              const stale = field && cadence !== undefined && age !== null && age > cadence;
-              return (
-                <tr key={name}>
-                  <td>{name}</td>
-                  <td>{field ? field.value : <span className="pill flag">never measured</span>}</td>
-                  <td className="muted">
-                    {field ? `${field.lastUpdated} (${age}d ago, ${field.source})` : '—'}
-                  </td>
-                  <td>
-                    {stale ? (
-                      <span className="pill flag">stale — cadence {cadence}d</span>
-                    ) : field ? (
-                      <span className="pill ok">current</span>
-                    ) : (
-                      ''
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="plain">
+            <thead>
+              <tr>
+                <th>Lever</th>
+                <th>Value</th>
+                <th>Measured</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(({ name, field, cadence }) => {
+                const age = field ? daysBetween(field.lastUpdated, today) : null;
+                const stale = field && cadence !== undefined && age !== null && age > cadence;
+                return (
+                  <tr key={name}>
+                    <td>{leverLabel(name)}</td>
+                    <td>{field ? field.value : <span className="pill flag">never measured</span>}</td>
+                    <td className="muted">
+                      {field ? `${field.lastUpdated} (${age}d ago, ${sourceLabel(field.source)})` : '—'}
+                    </td>
+                    <td>
+                      {stale ? (
+                        <span className="pill flag">stale — cadence {cadence}d</span>
+                      ) : field ? (
+                        <span className="pill ok">current</span>
+                      ) : (
+                        ''
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <p className="muted">
           Alcohol threshold (user-set): {state.levers.alcoholThreshold7d} units / 7 days.
         </p>

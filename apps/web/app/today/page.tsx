@@ -3,18 +3,31 @@
  * engine's expected default most weeks and is rendered as the first-class,
  * respectable outcome it is (contract §1, §11) — never as a failure state.
  */
+import type { Metadata } from 'next';
 import { currentDecision, todayIso } from '../../lib/data';
+import {
+  gateLabel,
+  modalityLabel,
+  pillarLabel,
+  rationaleText,
+  retestVerdictLabel,
+  slotLabel,
+  surfaceLabel,
+  tissueLabel,
+} from '../../lib/labels';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata: Metadata = { title: 'Today' };
+
 const LAYER_NAMES: Record<number, string> = {
-  0: 'Layer 0 — medical red flag',
-  1: 'Layer 1 — injury & illness gate',
-  2: 'Layer 2 — non-training lever',
-  3: 'Layer 3 — pillar floors',
-  4: 'Layer 4 — marginal allocation',
-  5: 'Layer 5 — session selection',
-  6: 'Layer 6 — noise gate',
+  0: 'medical red flag',
+  1: 'injury & illness gate',
+  2: 'non-training lever',
+  3: 'pillar floors',
+  4: 'marginal allocation',
+  5: 'session selection',
+  6: 'noise gate',
 };
 
 export default async function TodayPage() {
@@ -24,7 +37,9 @@ export default async function TodayPage() {
   return (
     <>
       <section className="card headline">
-        <div className="muted">{todayIso()} · fired: {LAYER_NAMES[decision.firedLayer]}</div>
+        <div className="muted">
+          {todayIso()} · decided at layer {decision.firedLayer} ({LAYER_NAMES[decision.firedLayer]})
+        </div>
         {decision.medicalStop ? (
           <p className="big">
             <span className="pill stop">Stop</span> Stop training and seek care (
@@ -62,9 +77,9 @@ export default async function TodayPage() {
           <ul>
             {decision.surfacedLevers.map((s) => (
               <li key={s.lever}>
-                <strong>{s.lever}</strong>{' '}
+                <strong>{surfaceLabel(s.lever)}</strong>{' '}
                 {s.priority === 'highest-non-emergent' && <span className="pill flag">priority</span>}
-                <span className="muted"> {s.trigger.code}</span>
+                <div className="muted">{rationaleText(s.trigger)}</div>
               </li>
             ))}
           </ul>
@@ -74,30 +89,32 @@ export default async function TodayPage() {
       {decision.sessions && decision.sessions.length > 0 && (
         <section className="card">
           <h2>Today&apos;s session</h2>
-          <table className="plain">
-            <thead>
-              <tr>
-                <th>Slot</th>
-                <th>Pillar</th>
-                <th>Modality</th>
-                <th>Content</th>
-                <th>Duration</th>
-                <th>Cost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {decision.sessions.map((s) => (
-                <tr key={s.slot + s.pillar}>
-                  <td>{s.slot}</td>
-                  <td>{s.pillar}</td>
-                  <td>{s.modality}</td>
-                  <td>{s.blocks.map((b) => b.name).join('; ')}</td>
-                  <td>{s.durationMinutes} min</td>
-                  <td title="sRPE × minutes × modality multiplier (I7)">{s.expectedCost}</td>
+          <div className="table-scroll">
+            <table className="plain">
+              <thead>
+                <tr>
+                  <th>Slot</th>
+                  <th>Pillar</th>
+                  <th>Modality</th>
+                  <th>Content</th>
+                  <th>Duration</th>
+                  <th>Cost</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {decision.sessions.map((s) => (
+                  <tr key={s.slot + s.pillar}>
+                    <td>{slotLabel(s.slot)}</td>
+                    <td>{pillarLabel(s.pillar)}</td>
+                    <td>{modalityLabel(s.modality)}</td>
+                    <td>{s.blocks.map((b) => b.name).join('; ')}</td>
+                    <td>{s.durationMinutes} min</td>
+                    <td title="sRPE × minutes × modality multiplier (I7)">{s.expectedCost}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 
@@ -113,12 +130,13 @@ export default async function TodayPage() {
           <h2>Active gates</h2>
           <ul>
             {decision.gates.map((gate, i) => (
-              <li key={i}>
-                <span className="pill flag">{gate.gate}</span>
-                <span className="muted">
-                  {gate.trigger.code}
-                  {gate.blockedChannels.length > 0 && ` · blocks: ${gate.blockedChannels.join(', ')}`}
-                </span>
+              <li key={i} style={{ marginBottom: '0.4rem' }}>
+                <span className="pill flag">{gateLabel(gate.gate)}</span>
+                <div className="muted">
+                  {rationaleText(gate.trigger)}
+                  {gate.blockedChannels.length > 0 &&
+                    ` Blocked: ${gate.blockedChannels.map(tissueLabel).join(', ')}.`}
+                </div>
               </li>
             ))}
           </ul>
@@ -130,7 +148,7 @@ export default async function TodayPage() {
           <h2>Retest verdict</h2>
           <p>
             <span className={`pill ${decision.retest.verdict === 'success' ? 'ok' : 'flag'}`}>
-              {decision.retest.verdict}
+              {retestVerdictLabel(decision.retest.verdict)}
             </span>
             {decision.retest.delta !== undefined && (
               <span className="muted">
@@ -145,8 +163,33 @@ export default async function TodayPage() {
 
       <section className="card">
         <details className="trace">
-          <summary>Why — full layer trace and rationale</summary>
-          <pre>{JSON.stringify({ trace: decision.trace, rationale: decision.rationale }, null, 2)}</pre>
+          <summary>Why — how this decision was made</summary>
+          <ul>
+            {decision.rationale.map((r, i) => (
+              <li key={i}>{rationaleText(r)}</li>
+            ))}
+          </ul>
+          <p className="muted">Cascade layers evaluated in strict order — the first to fire shapes the output:</p>
+          <ul>
+            {decision.trace.map((t) => (
+              <li key={t.layer} className={t.fired ? undefined : 'muted'}>
+                Layer {t.layer} — {LAYER_NAMES[t.layer]}: {t.fired ? 'fired' : 'passed through'}
+                {t.codes.length > 0 && (
+                  <ul>
+                    {t.codes.map((c, i) => (
+                      <li key={i} className="muted">
+                        {rationaleText(c)}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+          <details className="trace">
+            <summary>Raw trace (JSON)</summary>
+            <pre>{JSON.stringify({ trace: decision.trace, rationale: decision.rationale }, null, 2)}</pre>
+          </details>
         </details>
       </section>
     </>

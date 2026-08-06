@@ -4,11 +4,15 @@
  * noise band (approved RA2 rule), and retests are evaluated only against the
  * stored registration.
  */
+import type { Metadata } from 'next';
 import { sdc } from '@peakspan/engine';
 import { currentState } from '../../lib/data';
+import { metricLabel, pillarLabel } from '../../lib/labels';
 import { RetestForm, StartBlockForm } from './BlockForms';
 
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = { title: 'Blocks' };
 
 export default async function BlocksPage() {
   const state = await currentState();
@@ -35,11 +39,12 @@ export default async function BlocksPage() {
       {block ? (
         <section className="card">
           <h2>Active block</h2>
+          <div className="table-scroll">
           <table className="plain">
             <tbody>
               <tr>
                 <th>Pillar</th>
-                <td>{block.activePillar}</td>
+                <td>{pillarLabel(block.activePillar)}</td>
                 <th>Status</th>
                 <td>
                   <span className={`pill ${block.status === 'active' ? 'ok' : 'flag'}`}>
@@ -55,7 +60,7 @@ export default async function BlocksPage() {
               </tr>
               <tr>
                 <th>Metric</th>
-                <td>{block.metricUnderTest}</td>
+                <td>{metricLabel(block.metricUnderTest)}</td>
                 <th>Baseline at start</th>
                 <td>{block.baselineAtStart}</td>
               </tr>
@@ -91,6 +96,7 @@ export default async function BlocksPage() {
               )}
             </tbody>
           </table>
+          </div>
           <h2 style={{ marginTop: '1rem' }}>Submit retest</h2>
           <RetestForm />
         </section>

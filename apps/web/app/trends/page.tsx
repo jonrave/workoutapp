@@ -1,7 +1,10 @@
+import type { Metadata } from 'next';
 import { currentState, readEvents } from '../../lib/data';
 import { TrendChart, type TrendPoint } from '../../components/TrendChart';
 
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = { title: 'Trends' };
 
 export default async function TrendsPage() {
   const [state, events] = await Promise.all([currentState(), readEvents()]);

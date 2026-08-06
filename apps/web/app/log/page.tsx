@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { currentState } from '../../lib/data';
 import { StorageNotice } from '../../components/StorageNotice';
 import { DeviceSync } from '../../components/DeviceSync';
@@ -5,11 +6,16 @@ import { FreeTextLog, MorningCheckIn, QuickLog } from './LogForms';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata: Metadata = { title: 'Log' };
+
 export default async function LogPage() {
   const state = await currentState();
   const slots = state.standingPlan.weekStructure.map((s) => ({
     slot: s.slot,
     description: s.description,
+    modality: s.modality,
+    durationMinutes: s.durationMinutes,
+    targetSRPE: s.targetSRPE,
   }));
 
   return (

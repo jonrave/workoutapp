@@ -25,7 +25,8 @@ body {
 
 nav.top {
   display: flex;
-  gap: 1.25rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
   align-items: baseline;
   padding: 0.9rem 1.5rem;
   background: var(--surface);
@@ -41,16 +42,44 @@ nav.top a {
   color: var(--ink-secondary);
   text-decoration: none;
   font-size: 0.95rem;
+  padding: 0.1rem 0;
+  border-bottom: 2px solid transparent;
 }
 
 nav.top a:hover {
   color: var(--accent);
 }
 
+nav.top a.active {
+  color: var(--ink);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
 main {
   max-width: 880px;
   margin: 0 auto;
   padding: 1.5rem;
+}
+
+@media (max-width: 640px) {
+  nav.top {
+    padding: 0.75rem 1rem;
+    gap: 0.25rem 0.9rem;
+  }
+
+  main {
+    padding: 1rem 0.75rem;
+  }
+
+  .card {
+    padding: 0.9rem 1rem;
+  }
+}
+
+/* Wide tables scroll inside their own container; the page never scrolls sideways. */
+.table-scroll {
+  overflow-x: auto;
 }
 
 .card {

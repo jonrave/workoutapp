@@ -3,10 +3,14 @@
  * is no field here for hrv7d, baselines, or any vendor composite score (I4).
  * Everything entered becomes an event; all rolling statistics are projected.
  */
+import type { Metadata } from 'next';
 import { currentState } from '../../lib/data';
+import { modalityLabel } from '../../lib/labels';
 import { InjuryIntake, LeverIntake, MeasurementIntake } from './IntakeForms';
 
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = { title: 'Intake' };
 
 export default async function OnboardingPage() {
   const state = await currentState();
@@ -24,6 +28,7 @@ export default async function OnboardingPage() {
 
       <section className="card">
         <h2>Profile</h2>
+        <div className="table-scroll">
         <table className="plain">
           <tbody>
             <tr>
@@ -37,7 +42,7 @@ export default async function OnboardingPage() {
             <tr>
               <th>VO2-capable modalities</th>
               <td colSpan={3}>
-                {p.vo2CapableModalities.join(', ')}{' '}
+                {p.vo2CapableModalities.map(modalityLabel).join(', ')}{' '}
                 <span className="muted">
                   — interval work is only ever prescribed on these (I9); zones come from measured
                   thresholds, never 220 − age
@@ -52,6 +57,7 @@ export default async function OnboardingPage() {
             </tr>
           </tbody>
         </table>
+        </div>
       </section>
 
       <section className="card">
