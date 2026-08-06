@@ -21,8 +21,10 @@ import {
   layer1Gates,
   layer2Levers,
   layer3Floors,
+  layer4Marginal,
   layer6NoiseGate,
 } from '../src/layers';
+import { decide } from '../src/decide';
 import type { UserState } from '../src/types/state';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
@@ -170,6 +172,150 @@ describe('layer 3 — floors', () => {
       { startDate: '2026-07-27', endDate: '2026-08-02', weeklyBudgetMinutes: 180 },
     ];
     expect(layer3Floors(s, '2026-07-27').floorsOnly).toBe(true);
+  });
+});
+
+describe('layer 3 — plan floor audit (§4: protect every floor before optimizing)', () => {
+  it('the baseline plan structurally carries every floor', () => {
+    expect(layer3Floors(baseline(), '2026-07-27').deficits).toEqual([]);
+  });
+
+  it('a plan that drops a floor is flagged and fires layer 3', () => {
+    const s = baseline();
+    s.standingPlan.weekStructure = s.standingPlan.weekStructure.filter(
+      (x) => x.pillar !== 'maxStrength',
+    );
+    const r = layer3Floors(s, '2026-07-27');
+    expect(r.deficits).toContain('maxStrength');
+    const d = decide(s, '2026-07-27');
+    expect(d.firedLayer).toBe(3);
+    expect(d.allocation?.floors.maxStrength.met).toBe(false);
+    expect(d.rationale.map((c) => c.code)).toContain('floor-deficit');
+  });
+});
+
+describe('layer 4 — marginal allocation (§4)', () => {
+  it('always reports the ranking; population priors never move budget (I8)', () => {
+    const r = layer4Marginal(baseline());
+    expect(r.reallocated).toBe(false);
+    expect(r.marginal).toHaveLength(5);
+    expect(
+      r.marginal.every((m) => m.basis === 'population-prior' && m.deltaShareOfBudget === 0),
+    ).toBe(true);
+    expect(r.rationale.map((c) => c.code)).toContain('trainability-not-yet-identifiable');
+    // Under the convention priors, vo2max ranks first for this subject.
+    expect(r.marginal[0]!.pillar).toBe('vo2max');
+  });
+
+  it('an identifiable positive response reallocates, capped at 15%', () => {
+    const s = baseline();
+    s.trainability.vo2max = {
+      state: 'estimated',
+      mean: 1.2,
+      ciLow: 0.4,
+      ciHigh: 2.0,
+      blocksObserved: 3,
+    };
+    const r = layer4Marginal(s);
+    expect(r.reallocated).toBe(true);
+    expect(r.marginal.find((m) => m.pillar === 'vo2max')!.deltaShareOfBudget).toBe(
+      CONSTANTS.REALLOCATION_CAP,
+    );
+    expect(r.marginal.filter((m) => m.deltaShareOfBudget < 0)).toHaveLength(1);
+    expect(r.rationale.map((c) => c.code)).toContain('marginal-reallocation');
+    expect(decide(s, '2026-07-27').firedLayer).toBe(4);
+  });
+
+  it('an estimate whose CI includes zero does not reallocate (the I3 discipline applied to §7)', () => {
+    const s = baseline();
+    s.trainability.vo2max = {
+      state: 'estimated',
+      mean: 0.3,
+      ciLow: -0.2,
+      ciHigh: 0.8,
+      blocksObserved: 2,
+    };
+    const r = layer4Marginal(s);
+    expect(r.reallocated).toBe(false);
+    expect(r.rationale.map((c) => c.code)).toContain('estimated-response-includes-zero');
+  });
+});
+
+describe('layer 5 — I9, adherence, multi-session days, free-day suggestion', () => {
+  it('I9: intervals planned on a non-capable modality are moved to the primary capable one', () => {
+    const s = baseline();
+    s.standingPlan.weekStructure = s.standingPlan.weekStructure.map((x) =>
+      x.pillar === 'vo2max' ? { ...x, modality: 'spinBike' as const } : x,
+    );
+    const d = decide(s, '2026-07-28'); // Tuesday: interval day
+    expect(d.sessions?.[0]?.modality).toBe('run');
+    expect(d.rationale.map((c) => c.code)).toContain('i9-modality-substituted');
+    expect(d.noiseGate.outcome).toBe('changes-applied');
+  });
+
+  it('I9: with no capable modality declared, intervals are withheld and become Z2', () => {
+    const s = baseline();
+    s.profile.vo2CapableModalities = [];
+    const d = decide(s, '2026-07-28');
+    expect(d.sessions?.[0]?.pillar).toBe('zone2');
+    expect(d.rationale.map((c) => c.code)).toContain('i9-no-capable-modality');
+  });
+
+  it('a hard session in a low-adherence slot gets a move suggestion, never a silent change (§3)', () => {
+    const s = baseline();
+    s.standingPlan.weekStructure = [
+      ...s.standingPlan.weekStructure.filter((x) => !x.slot.startsWith('thu')),
+      {
+        slot: 'thu-evening',
+        pillar: 'maxStrength',
+        modality: 'lift',
+        description: 'Lower emphasis: squat, hinge accessory',
+        durationMinutes: 60,
+        targetSRPE: 7,
+      },
+    ];
+    const d = decide(s, '2026-07-30'); // Thursday: seed adherence 0.4
+    expect(d.rationale.map((c) => c.code)).toContain('low-adherence-slot');
+    expect(d.noiseGate.outcome).toBe('no-change-detected'); // suggestion only
+  });
+
+  it('every session on a two-session day is prescribed', () => {
+    const s = baseline();
+    s.standingPlan.weekStructure.push({
+      slot: 'mon-evening',
+      pillar: 'mobility',
+      modality: 'other',
+      description: 'Hips/ankles ROM circuit',
+      durationMinutes: 15,
+      targetSRPE: 2,
+    });
+    const d = decide(s, '2026-07-27');
+    expect(d.sessions).toHaveLength(2);
+  });
+
+  it('free day: the most-behind floor is suggested and the noise gate stays quiet (§1)', () => {
+    const d = decide(baseline(), '2026-07-31'); // Friday: nothing planned
+    expect(d.sessions).toEqual([]);
+    expect(d.freeSession?.pillar).toBe('vo2max'); // acute 95 vs floor cost 340
+    expect(d.freeSession?.modality).toBe('run'); // I9: first capable modality
+    expect(d.rationale.map((c) => c.code)).toContain('free-session-suggestion');
+    expect(d.noiseGate.outcome).toBe('no-change-detected'); // a suggestion is not a plan change
+  });
+
+  it('free-day suggestion is withheld under the sleep load cap (§5)', () => {
+    const s = baseline();
+    s.recovery.sleepMean7d.value = 6.5;
+    const d = decide(s, '2026-07-31');
+    expect(d.freeSession).toBeNull();
+    expect(d.rationale.map((c) => c.code)).toContain('free-session-withheld-sleep-cap');
+  });
+
+  it('nothing meaningfully behind → the rest day stands, no suggestion emitted (§9)', () => {
+    const s = baseline();
+    s.load.acute = { maxStrength: 560, vo2max: 340, zone2: 240, power: 84, mobility: 40 };
+    const d = decide(s, '2026-07-31');
+    expect(d.freeSession).toBeNull();
+    expect(d.rationale.map((c) => c.code)).not.toContain('free-session-suggestion');
   });
 });
 

@@ -2,9 +2,11 @@
  * Pure derivation helpers shared by the cascade layers. No I/O (I1).
  */
 import { CONSTANTS } from './constants';
+import type { MarginalAllocation } from './types/decision';
 import type { IsoDate } from './types/field';
 import type {
   History,
+  Pillar,
   Profile,
   RecoveryState,
   TemporaryConstraint,
@@ -149,6 +151,103 @@ export function effectiveWeeklyBudget(profile: Profile, date: IsoDate): number {
   if (c?.weeklyBudgetMinutes !== undefined) return c.weeklyBudgetMinutes;
   if (c?.dailyMinutesCap !== undefined) return c.dailyMinutesCap * 7;
   return profile.weeklyBudgetMinutes;
+}
+
+/** Session descriptions matching this carry plyometric / max-velocity elements. */
+export const PLYO_MARKER = /(primer|jump|pogo|plyo|throw|sprint|stride)/i;
+
+/**
+ * Tissue channels a pillar's typical sessions load — used for the Layer 4
+ * injury-hazard bump and for excluding gated pillars from free-day
+ * suggestions. Convention, coarse by design.
+ */
+export const PILLAR_CHANNELS: Record<Pillar, TissueChannel[]> = {
+  maxStrength: ['axialCompression', 'kneeExtensor', 'hipExtensor', 'upperPush', 'upperPull'],
+  vo2max: ['calfAchillesHighVelocity', 'kneeExtensor', 'hipExtensor'],
+  zone2: ['calfAchillesHighVelocity', 'kneeExtensor', 'hipExtensor'],
+  power: ['connectiveHighVelocity', 'hamstringHighVelocity', 'calfAchillesHighVelocity'],
+  mobility: [],
+};
+
+export interface PlanFloorAudit {
+  /** Pillars whose §4 maintenance floor the standing plan does not structurally carry. */
+  deficits: Pillar[];
+  /** Weekly session count the plan carries per pillar (power counts plyo/primer exposures too). */
+  sessionsByPillar: Record<Pillar, number>;
+  /** vo2max sessions prescribed on a modality outside `vo2CapableModalities` (I9 violations). */
+  i9Violations: Array<{ slot: string; modality: string }>;
+}
+
+/**
+ * Layer 3 structural check: does the standing plan carry every pillar's
+ * minimum effective dose? Losing a pillar costs far more than gaining one is
+ * worth (§4), so a plan that structurally drops a floor is flagged loudly —
+ * independent of budget. Also audits I9 on the plan itself.
+ */
+export function planFloorAudit(state: UserState): PlanFloorAudit {
+  const sessionsByPillar: Record<Pillar, number> = {
+    maxStrength: 0,
+    vo2max: 0,
+    zone2: 0,
+    power: 0,
+    mobility: 0,
+  };
+  const i9Violations: Array<{ slot: string; modality: string }> = [];
+  for (const s of state.standingPlan.weekStructure) {
+    sessionsByPillar[s.pillar] += 1;
+    // Power exposures ride inside other sessions as primers (§4 floor table).
+    if (s.pillar !== 'power' && PLYO_MARKER.test(s.description)) {
+      sessionsByPillar.power += 1;
+    }
+    if (s.pillar === 'vo2max' && !state.profile.vo2CapableModalities.includes(s.modality)) {
+      i9Violations.push({ slot: s.slot, modality: s.modality });
+    }
+  }
+  const deficits = (Object.keys(sessionsByPillar) as Pillar[]).filter(
+    (p) => sessionsByPillar[p] < (CONSTANTS.FLOOR_SESSIONS[p] ?? 0),
+  );
+  return { deficits, sessionsByPillar, i9Violations };
+}
+
+/** True when any recorded injury on the pillar's channels has recurred. */
+function recurrentInjuryOnChannels(state: UserState, pillar: Pillar): boolean {
+  const channels = PILLAR_CHANNELS[pillar];
+  return state.history.injuries.some(
+    (inj) => inj.recurrenceCount >= 1 && channels.includes(inj.site as TissueChannel),
+  );
+}
+
+/**
+ * §4 Layer 4: the two-term chain rule plus a hazard penalty, per pillar.
+ *
+ * marginalValue = healthSlopeAtCurrentPosition × estimatedResponseRate × (1 − injuryHazardDelta)
+ *
+ * The response term comes from the user's own §7 estimate when identifiable
+ * and from the population prior otherwise — every row carries its `basis` so
+ * the UI can say which numbers are this user's data and which are placeholders
+ * (§11). A population-prior row may never drive a reallocation (I8).
+ */
+export function marginalRanking(state: UserState): MarginalAllocation[] {
+  const pillars = Object.keys(PILLAR_CHANNELS) as Pillar[];
+  const rows = pillars.map((pillar): MarginalAllocation => {
+    const t = state.trainability[pillar];
+    const estimated = t.state === 'estimated';
+    const response = estimated
+      ? Math.max(t.mean, 0)
+      : CONSTANTS.TRAINABILITY_PRIOR_RESPONSE[pillar] ?? 0;
+    let hazard = CONSTANTS.INJURY_HAZARD_DELTA_PRIOR[pillar] ?? 0;
+    if (recurrentInjuryOnChannels(state, pillar)) {
+      hazard = Math.min(0.9, hazard + CONSTANTS.INJURY_HAZARD_RECURRENCE_BUMP);
+    }
+    const slope = CONSTANTS.HEALTH_SLOPE_PRIOR[pillar] ?? 0;
+    return {
+      pillar,
+      marginalValue: Math.round(slope * response * (1 - hazard) * 1000) / 1000,
+      deltaShareOfBudget: 0,
+      basis: estimated ? 'estimated' : 'population-prior',
+    };
+  });
+  return rows.sort((a, b) => b.marginalValue - a.marginalValue);
 }
 
 /** Highest acute:chronic ratio across pillars — §6: soft caution only, never a hard block. */

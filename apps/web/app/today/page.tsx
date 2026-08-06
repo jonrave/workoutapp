@@ -37,6 +37,9 @@ const DAY_PREFIX = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 export default async function TodayPage() {
   const { state, decision } = await currentDecision();
   const noChange = decision.noiseGate.outcome === 'no-change-detected';
+  const floorDeficits = decision.allocation
+    ? Object.entries(decision.allocation.floors).filter(([, f]) => !f.met)
+    : [];
   const dayPrefix = DAY_PREFIX[new Date(`${todayIso()}T00:00:00Z`).getUTCDay()];
   const todaysPlanned = state.standingPlan.weekStructure
     .filter((s) => s.slot.startsWith(`${dayPrefix}-`))
@@ -132,10 +135,102 @@ export default async function TodayPage() {
         </section>
       )}
 
-      {decision.sessions && decision.sessions.length === 0 && (
+      {decision.sessions && decision.sessions.length === 0 && !decision.freeSession && (
         <section className="card">
           <h2>Rest day</h2>
-          <p className="muted">Nothing on the standing plan today.</p>
+          <p className="muted">
+            Nothing on the standing plan today, and no pillar floor is meaningfully behind — rest
+            is the right call.
+          </p>
+        </section>
+      )}
+
+      {decision.sessions && decision.sessions.length === 0 && decision.freeSession && (
+        <section className="card">
+          <h2>Free-day opportunity — optional</h2>
+          <p className="muted">
+            Nothing is planned today. Based on your last 7 days of load, one pillar floor is
+            meaningfully behind its maintenance dose; this session fills it. Rest remains a fully
+            valid choice — skipping this changes nothing.
+          </p>
+          <div className="table-scroll">
+            <table className="plain">
+              <thead>
+                <tr>
+                  <th>Pillar</th>
+                  <th>Modality</th>
+                  <th>Content</th>
+                  <th>Duration</th>
+                  <th>Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{pillarLabel(decision.freeSession.pillar)}</td>
+                  <td>{modalityLabel(decision.freeSession.modality)}</td>
+                  <td>{decision.freeSession.blocks.map((b) => b.name).join('; ')}</td>
+                  <td>{decision.freeSession.durationMinutes} min</td>
+                  <td title="sRPE × minutes × modality multiplier (I7)">
+                    {decision.freeSession.expectedCost}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {floorDeficits.length > 0 && (
+        <section className="card">
+          <h2>Standing plan is missing a floor</h2>
+          <p className="muted">
+            Losing a pillar costs far more than gaining one is worth (§4). The plan does not
+            structurally carry the minimum dose for:{' '}
+            {floorDeficits.map(([p]) => pillarLabel(p)).join(', ')}. Restore it on the Plan page.
+          </p>
+        </section>
+      )}
+
+      {decision.allocation && decision.allocation.marginal.length > 0 && (
+        <section className="card">
+          <h2>Marginal value ranking</h2>
+          <p className="muted">
+            Where the next residual training hour is worth most: health slope × your response rate
+            × (1 − injury hazard). Rows marked “population prior” are placeholders, not your data —
+            they never move the budget (I8).
+          </p>
+          <div className="table-scroll">
+            <table className="plain">
+              <thead>
+                <tr>
+                  <th>Pillar</th>
+                  <th>Marginal value</th>
+                  <th>Response basis</th>
+                  <th>Budget shift</th>
+                </tr>
+              </thead>
+              <tbody>
+                {decision.allocation.marginal.map((m) => (
+                  <tr key={m.pillar}>
+                    <td>{pillarLabel(m.pillar)}</td>
+                    <td>{m.marginalValue}</td>
+                    <td>
+                      {m.basis === 'estimated' ? (
+                        <span className="pill ok">your data</span>
+                      ) : (
+                        <span className="muted">population prior</span>
+                      )}
+                    </td>
+                    <td>
+                      {m.deltaShareOfBudget !== 0
+                        ? `${m.deltaShareOfBudget > 0 ? '+' : ''}${Math.round(m.deltaShareOfBudget * 100)}%`
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
 

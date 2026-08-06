@@ -20,7 +20,7 @@ import {
 } from '@peakspan/adapters';
 import type { PlannedSession, ProfileUpdateEvent } from '@peakspan/engine';
 import type { EngineEvent } from '@peakspan/engine';
-import { appendEvent } from '../../../lib/data';
+import { appendEvent, currentState } from '../../../lib/data';
 
 const bodySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -167,13 +167,30 @@ export async function POST(request: Request) {
         occurredAt: body.occurredAt,
       });
       break;
-    case 'plan-update':
+    case 'plan-update': {
+      // I9 hard invariant: interval work only on a VO2-capable modality.
+      // Rejected at the write path so a violating plan never enters the log.
+      const { profile } = await currentState();
+      const violations = body.weekStructure.filter(
+        (s) => s.pillar === 'vo2max' && !profile.vo2CapableModalities.includes(s.modality),
+      );
+      if (violations.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Interval work may only be planned on a VO2-capable modality (I9). Not capable: ${violations
+              .map((s) => `${s.slot} (${s.modality})`)
+              .join(', ')}. Capable: ${profile.vo2CapableModalities.join(', ') || 'none declared'}.`,
+          },
+          { status: 400 },
+        );
+      }
       event = planUpdate({
         weekStructure: body.weekStructure as PlannedSession[],
         occurredAt: body.occurredAt,
         ...(body.note !== undefined ? { note: body.note } : {}),
       });
       break;
+    }
   }
 
   try {

@@ -92,6 +92,7 @@ export function projectState(seed: UserState, events: EngineEvent[], today: IsoD
   projectLevers(state, ordered, today);
   projectHistory(state, ordered, today);
   projectBlock(state, seedFitness, ordered, today);
+  projectTrainability(state, seedFitness, ordered);
   return state;
 }
 
@@ -383,6 +384,12 @@ function projectHistory(state: UserState, events: EngineEvent[], today: IsoDate)
     const d = done.get(slot) ?? 0;
     const m = missed.get(slot) ?? 0;
     state.history.adherenceBySlot[slot] = round(d / (d + m), 2);
+    // Observation counts let Layer 5 hold learned rates to a minimum-N gate
+    // before acting on them (the SDC-analog for adherence data).
+    state.history.adherenceObservations = {
+      ...(state.history.adherenceObservations ?? {}),
+      [slot]: d + m,
+    };
   }
 }
 
@@ -460,6 +467,100 @@ function projectBlock(
       unit: lastRetest.unit,
       ...(lastRetest.typicalError !== undefined ? { typicalError: lastRetest.typicalError } : {}),
       measuredAt: day(lastRetest.occurredAt),
+    };
+  }
+}
+
+/**
+ * §7 trainability estimation — the learning loop that makes Layer 4 reachable.
+ *
+ * Every concluded, evaluable block (pre-registered threshold + retest, not
+ * interrupted) contributes one observation: the retest delta in SDC-normalized
+ * units (delta ÷ SDC). Per pillar, observations shrink toward the population
+ * prior; the estimate flips to `estimated` only once TRAINABILITY_MIN_BLOCKS
+ * evaluable blocks have accumulated (I8: "response not yet identifiable" is
+ * the default and must remain so until the data supports otherwise).
+ *
+ * All shrinkage constants are conventions (§11); see constants.ts.
+ */
+function projectTrainability(
+  state: UserState,
+  seedFitness: UserState['fitness'],
+  events: EngineEvent[],
+): void {
+  const observations: Partial<Record<Pillar, number[]>> = {};
+
+  for (const start of events) {
+    if (start.type !== 'block-start') continue;
+    if (!start.preRegisteredThreshold) continue; // I10: unevaluable, contributes nothing
+    const retest = [...events]
+      .reverse()
+      .find(
+        (e) => e.type === 'retest' && e.blockId === start.id && e.occurredAt >= start.occurredAt,
+      );
+    if (!retest || retest.type !== 'retest') continue;
+
+    const startDay = day(start.occurredAt);
+    const retestDay = day(retest.occurredAt);
+    // An interruption of ramp length inside the block window voids it as a
+    // dose-response observation (mirrors projectBlock's interrupted status).
+    const interrupted = state.history.interruptions.some(
+      (i) =>
+        i.durationDays >= CONSTANTS.INTERRUPTION_RAMP_MIN_DAYS &&
+        i.startDate >= startDay &&
+        i.startDate <= retestDay,
+    );
+    if (interrupted) continue;
+
+    const metric = start.metricUnderTest;
+    // Baseline resolution mirrors projectBlock: last pre-start measurement,
+    // then the value registered on the block-start event, then the seed.
+    const preStart = events.filter(
+      (e) =>
+        e.type === 'fitness-measurement' &&
+        e.metric === metric &&
+        e.occurredAt <= start.occurredAt,
+    );
+    const lastPreStart = preStart[preStart.length - 1];
+    const baseline =
+      lastPreStart && lastPreStart.type === 'fitness-measurement' && metric !== 'maxStrength'
+        ? lastPreStart.value
+        : start.baselineValue !== undefined
+          ? start.baselineValue
+          : metric !== 'maxStrength'
+            ? seedFitness[metric]?.value ?? null
+            : null;
+    if (baseline === null) continue;
+
+    const typicalError =
+      retest.typicalError ??
+      (metric !== 'maxStrength' ? state.fitness[metric]?.typicalError : undefined) ??
+      0;
+    const sdcValue = CONSTANTS.SDC_MULTIPLIER * typicalError;
+    if (sdcValue <= 0) continue; // no noise model → no normalized observation
+
+    (observations[start.pillar] ??= []).push((retest.value - baseline) / sdcValue);
+  }
+
+  for (const [pillar, obs] of Object.entries(observations) as Array<[Pillar, number[]]>) {
+    if (!obs || obs.length === 0) continue;
+    const seedCount = state.trainability[pillar].blocksObserved ?? 0;
+    const blocksObserved = seedCount + obs.length;
+    if (blocksObserved < CONSTANTS.TRAINABILITY_MIN_BLOCKS) {
+      state.trainability[pillar] = { state: 'not-yet-identifiable', blocksObserved };
+      continue;
+    }
+    const prior = CONSTANTS.TRAINABILITY_PRIOR_RESPONSE[pillar] ?? 0;
+    const w = CONSTANTS.TRAINABILITY_PRIOR_WEIGHT;
+    const sum = obs.reduce((s, x) => s + x, 0);
+    const posterior = (w * prior + sum) / (w + obs.length);
+    const half = (1.96 * CONSTANTS.TRAINABILITY_PRIOR_SD) / Math.sqrt(w + obs.length);
+    state.trainability[pillar] = {
+      state: 'estimated',
+      mean: round(posterior, 3),
+      ciLow: round(posterior - half, 3),
+      ciHigh: round(posterior + half, 3),
+      blocksObserved,
     };
   }
 }

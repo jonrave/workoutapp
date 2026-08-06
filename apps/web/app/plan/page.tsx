@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { planFloorAudit } from '@peakspan/engine';
 import { currentState } from '../../lib/data';
 import { modalityLabel, pillarLabel, slotLabel } from '../../lib/labels';
 import { PlanEditor } from './PlanEditor';
@@ -10,6 +11,7 @@ export const metadata: Metadata = { title: 'Plan' };
 export default async function PlanPage() {
   const state = await currentState();
   const plan = state.standingPlan;
+  const audit = planFloorAudit(state);
 
   return (
     <>
@@ -19,6 +21,27 @@ export default async function PlanPage() {
           The default output most weeks is: do the planned session. Last changed {plan.lastChanged}.
         </p>
       </section>
+
+      {(audit.deficits.length > 0 || audit.i9Violations.length > 0) && (
+        <section className="card">
+          <h2>Plan warnings</h2>
+          {audit.deficits.length > 0 && (
+            <p>
+              <span className="pill flag">Floor missing</span>{' '}
+              The plan does not structurally carry the maintenance floor for:{' '}
+              {audit.deficits.map(pillarLabel).join(', ')}. Losing a pillar costs far more than
+              gaining one is worth (§4) — add its minimum dose back.
+            </p>
+          )}
+          {audit.i9Violations.map((v) => (
+            <p key={v.slot}>
+              <span className="pill flag">I9</span> {slotLabel(v.slot)}: interval work is planned
+              on {modalityLabel(v.modality)}, which is not in your VO₂-capable modalities. The
+              engine will substitute your primary capable modality until this is fixed here.
+            </p>
+          ))}
+        </section>
+      )}
       <section className="card">
         <div className="table-scroll">
           <table className="plain">

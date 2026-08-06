@@ -269,6 +269,13 @@ export interface History {
   injuries: Injury[];
   /** Completion rate 0–1 per slot, learned from outcomes. */
   adherenceBySlot: Partial<Record<Slot, number>>;
+  /**
+   * Outcomes observed per slot (done + missed), projector-derived. Layer 5
+   * only acts on a learned rate once its count clears the minimum-observations
+   * convention; a seed-declared rate with no count entry is treated as
+   * established history.
+   */
+  adherenceObservations?: Partial<Record<Slot, number>>;
 }
 
 /**

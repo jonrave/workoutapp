@@ -93,6 +93,79 @@ export const CONSTANTS = {
   /** evidence: contract §4 Layer 4 — cap any single reallocation at ~15% of weekly budget. */
   REALLOCATION_CAP: 0.15,
 
+  /**
+   * convention: weekly sRPE-minute cost reserved per pillar floor (I7 — cost
+   * units, never minutes). Derived from the §4 floor table's working
+   * prescriptions: strength 2×40min@7, vo2 1×40min@8.5, z2 1×60min@4,
+   * power 12min@7 across 2 exposures, mobility 5×20min@2 at 0.2 weight.
+   */
+  FLOOR_COST: {
+    maxStrength: 560,
+    vo2max: 340,
+    zone2: 240,
+    power: 84,
+    mobility: 40,
+  } as Record<string, number>,
+  /** convention: weekly session count the standing plan must carry per floor (power counts short plyo/primer exposures). */
+  FLOOR_SESSIONS: {
+    maxStrength: 2,
+    vo2max: 1,
+    zone2: 1,
+    power: 2,
+    mobility: 1,
+  } as Record<string, number>,
+
+  /** ---- §7 trainability estimation. All conventions (§11). ---- */
+  /** convention: evaluable block retests required before a pillar's response is 'estimated' (§7 says "several"; we start acting at 2). */
+  TRAINABILITY_MIN_BLOCKS: 2,
+  /** convention: pseudo-observation weight of the population prior in the shrinkage mean (§7). */
+  TRAINABILITY_PRIOR_WEIGHT: 2,
+  /**
+   * convention: population-prior response per completed block, in
+   * SDC-normalized units (retest delta ÷ SDC). Deliberately coarse; the wide
+   * prior SD below is the honest part (HERITAGE: individual VO2max response
+   * ranges from near zero to large).
+   */
+  TRAINABILITY_PRIOR_RESPONSE: {
+    maxStrength: 0.8,
+    vo2max: 1.0,
+    zone2: 0.9,
+    power: 0.6,
+    mobility: 0.7,
+  } as Record<string, number>,
+  /** convention: prior SD for the shrinkage interval, same SDC-normalized units. */
+  TRAINABILITY_PRIOR_SD: 0.8,
+
+  /** ---- §4 Layer 4 marginal-value terms. All conventions (§11). ---- */
+  /** convention: healthSlopeAtCurrentPosition prior per pillar, unitless relative scale. */
+  HEALTH_SLOPE_PRIOR: {
+    vo2max: 1.0,
+    zone2: 0.8,
+    maxStrength: 0.7,
+    power: 0.5,
+    mobility: 0.25,
+  } as Record<string, number>,
+  /** convention: injuryHazardDelta prior per pillar, 0–1 share subtracted from marginal value. */
+  INJURY_HAZARD_DELTA_PRIOR: {
+    mobility: 0.02,
+    zone2: 0.05,
+    maxStrength: 0.1,
+    vo2max: 0.15,
+    power: 0.25,
+  } as Record<string, number>,
+  /** convention: hazard bump when a pillar loads a tissue channel with a recurrent injury on record. */
+  INJURY_HAZARD_RECURRENCE_BUMP: 0.15,
+
+  /** ---- Layer 5 free-day suggestion + slot adherence. All conventions (§11). ---- */
+  /** convention: a free-day floor suggestion fires only when a pillar's acute (7d EWMA) load is below this share of its floor cost. */
+  FREE_SESSION_DEFICIT_RATIO: 0.75,
+  /** convention: learned slot completion rate below this triggers a move-the-session suggestion (§3: stop scheduling hard work there). */
+  ADHERENCE_FLAG_RATE: 0.6,
+  /** convention: outcomes observed on a slot before its learned rate drives suggestions (the SDC-analog for adherence data). */
+  ADHERENCE_MIN_OBSERVATIONS: 4,
+  /** convention: targetSRPE at/above this counts as "hard work" for slot-adherence suggestions. */
+  ADHERENCE_HARD_SRPE: 7,
+
   /** convention: session cost multipliers per modality (I7: cost = sRPE × minutes × multiplier). */
   MODALITY_MULTIPLIERS: {
     run: 1.0,

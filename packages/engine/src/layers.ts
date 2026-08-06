@@ -15,12 +15,17 @@ import {
   hrvFlagStatus,
   illnessRamp,
   interruptionRamp,
+  marginalRanking,
+  PILLAR_CHANNELS,
+  planFloorAudit,
+  PLYO_MARKER,
   sdc,
   upcomingConstraint,
 } from './derive';
 import type {
   GateResult,
   LeverSurface,
+  MarginalAllocation,
   MedicalStop,
   RationaleCode,
   RetestEvaluation,
@@ -28,6 +33,7 @@ import type {
 } from './types/decision';
 import type { IsoDate } from './types/field';
 import type {
+  Pillar,
   PlannedSession,
   TissueChannel,
   UserState,
@@ -339,6 +345,10 @@ export function layer2Levers(state: UserState, date: IsoDate): Layer2Result {
 export interface Layer3Result {
   floorsOnly: boolean;
   budget: number;
+  /** Pillars whose floor the standing plan does not structurally carry (§4: protect every floor before optimizing anything). */
+  deficits: Pillar[];
+  /** Weekly session count the plan carries per pillar. */
+  sessionsByPillar: Record<Pillar, number>;
   rationale: RationaleCode[];
 }
 
@@ -356,7 +366,22 @@ export function layer3Floors(state: UserState, date: IsoDate): Layer3Result {
         },
       ]
     : [];
-  return { floorsOnly, budget, rationale };
+  // Structural audit: losing a pillar costs far more than gaining one is
+  // worth. A plan that drops a floor is flagged regardless of budget.
+  const audit = planFloorAudit(state);
+  if (audit.deficits.length > 0) {
+    rationale.push({
+      code: 'floor-deficit',
+      params: { pillars: audit.deficits.join(','), floors: audit.deficits.map((p) => `${p} needs ${CONSTANTS.FLOOR_SESSIONS[p]}x/wk`).join('; ') },
+    });
+  }
+  return {
+    floorsOnly,
+    budget,
+    deficits: audit.deficits,
+    sessionsByPillar: audit.sessionsByPillar,
+    rationale,
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -365,24 +390,59 @@ export function layer3Floors(state: UserState, date: IsoDate): Layer3Result {
 
 export interface Layer4Result {
   reallocated: boolean;
+  /** Full per-pillar marginal-value ranking, always computed, provenance-labeled (§11). */
+  marginal: MarginalAllocation[];
   rationale: RationaleCode[];
 }
 
 /**
- * With every pillar's trainability `not-yet-identifiable` (I8) no gradient is
- * estimable above noise, so the honest allocation is the standing one. Any
- * future reallocation must clear the triggering signal's SDC (I3) and is
- * capped at REALLOCATION_CAP of the weekly budget (§4).
+ * §4 Layer 4. The ranking is always computed and reported —
+ * `marginalValue = healthSlope × responseRate × (1 − hazard)` — but budget
+ * only moves when the response term is this user's own identifiable data:
+ *
+ * - No pillar `estimated` (I8): ranking rows carry `basis: population-prior`,
+ *   nothing reallocates, and the decision says so.
+ * - A pillar is `estimated` but its CI includes zero: the response is not
+ *   distinguishable from no-response above measurement noise (the I3 discipline
+ *   applied to the §7 estimate) — still no reallocation.
+ * - Otherwise: shift REALLOCATION_CAP of the weekly budget toward the
+ *   highest-marginal-value identifiable pillar, taken from the lowest-ranked
+ *   pillar. Floors are reserved before this layer, so the donor's floor is
+ *   untouched (§4: later layers only allocate what earlier layers leave).
  */
 export function layer4Marginal(state: UserState): Layer4Result {
-  const identifiable = Object.values(state.trainability).some((t) => t.state === 'estimated');
-  if (!identifiable) {
-    return {
-      reallocated: false,
-      rationale: [{ code: 'trainability-not-yet-identifiable' }],
-    };
+  const marginal = marginalRanking(state);
+  const rationale: RationaleCode[] = [];
+
+  const identifiable = marginal.filter((m) => {
+    if (m.basis !== 'estimated') return false;
+    const t = state.trainability[m.pillar];
+    return t.state === 'estimated' && t.ciLow > 0;
+  });
+
+  if (!marginal.some((m) => m.basis === 'estimated')) {
+    rationale.push({ code: 'trainability-not-yet-identifiable' });
+    return { reallocated: false, marginal, rationale };
   }
-  return { reallocated: false, rationale: [] };
+  if (identifiable.length === 0) {
+    rationale.push({ code: 'estimated-response-includes-zero' });
+    return { reallocated: false, marginal, rationale };
+  }
+
+  const winner = identifiable[0]!; // marginal is sorted descending
+  const donor = [...marginal].reverse().find((m) => m.pillar !== winner.pillar)!;
+  winner.deltaShareOfBudget = CONSTANTS.REALLOCATION_CAP;
+  donor.deltaShareOfBudget = -CONSTANTS.REALLOCATION_CAP;
+  rationale.push({
+    code: 'marginal-reallocation',
+    params: {
+      toward: winner.pillar,
+      from: donor.pillar,
+      share: CONSTANTS.REALLOCATION_CAP,
+      marginalValue: winner.marginalValue,
+    },
+  });
+  return { reallocated: true, marginal, rationale };
 }
 
 /* ------------------------------------------------------------------ */
@@ -402,10 +462,10 @@ export interface Layer5Result {
   /** True when selection changed something vs the standing plan for a selection-layer reason. */
   restructured: boolean;
   modifiedByGates: boolean;
+  /** Free-day floor suggestion — informational, never a plan change (does not trip the noise gate). */
+  freeSession: SessionPrescription | null;
   rationale: RationaleCode[];
 }
-
-const PLYO_MARKER = /(primer|jump|pogo|plyo|throw|sprint|stride)/i;
 
 function tissueExposureFor(p: PlannedSession, includesPlyo: boolean): TissueChannel[] {
   const channels: TissueChannel[] = [];
@@ -443,6 +503,91 @@ function toPrescription(
   return merged;
 }
 
+/** Free-day floor top-up templates per pillar (conventions, §4 floor table). */
+const FREE_SESSION_SPECS: Record<
+  Pillar,
+  { modality: PlannedSession['modality']; description: string; durationMinutes: number; targetSRPE: number }
+> = {
+  maxStrength: {
+    modality: 'lift',
+    description: 'Floor top-up: full-body strength, 4 hard sets on the least-recent patterns',
+    durationMinutes: 40,
+    targetSRPE: 7,
+  },
+  vo2max: {
+    modality: 'run', // replaced with the first vo2CapableModality at build time (I9)
+    description: 'Floor top-up: intervals 4x4min Z5, warmup/cooldown',
+    durationMinutes: 40,
+    targetSRPE: 8.5,
+  },
+  zone2: {
+    modality: 'run',
+    description: 'Floor top-up: continuous Z2 below LT1',
+    durationMinutes: 45,
+    targetSRPE: 4,
+  },
+  power: {
+    modality: 'other',
+    description: 'Floor top-up: jumps and throws, low volume, full recovery between efforts',
+    durationMinutes: 15,
+    targetSRPE: 6,
+  },
+  mobility: {
+    modality: 'other',
+    description: 'Floor top-up: hips/ankles ROM circuit',
+    durationMinutes: 15,
+    targetSRPE: 2,
+  },
+};
+
+/**
+ * Free-day suggestion: the most-behind pillar floor by acute (7-day EWMA)
+ * load vs floor cost, respecting active gates. Fires only when something is
+ * meaningfully behind (FREE_SESSION_DEFICIT_RATIO) — otherwise rest stands,
+ * and a suggestion is never emitted just to fill a day (§1: novelty is not a
+ * feature; §9: no mechanic that penalizes correct rest).
+ */
+function suggestFreeSession(
+  state: UserState,
+  ctx: Layer5Context,
+  opts: { plyoBlocked: boolean; deloadActive: boolean; blockedChannels: Set<TissueChannel> },
+  dow: string,
+  rationale: RationaleCode[],
+): SessionPrescription | null {
+  if (ctx.sleepLoadCap) {
+    // §5 sleep lever: any increase in training load is blocked. An extra
+    // session on a rest day is exactly that increase.
+    rationale.push({ code: 'free-session-withheld-sleep-cap' });
+    return null;
+  }
+  const ranked = (Object.keys(FREE_SESSION_SPECS) as Pillar[])
+    .map((p) => ({ p, ratio: state.load.acute[p] / (CONSTANTS.FLOOR_COST[p] || 1) }))
+    .sort((a, b) => a.ratio - b.ratio);
+  for (const { p, ratio } of ranked) {
+    if (ratio >= CONSTANTS.FREE_SESSION_DEFICIT_RATIO) break; // nothing meaningfully behind
+    if (p === 'power' && opts.plyoBlocked) continue;
+    if (p === 'vo2max' && opts.deloadActive) continue;
+    if (PILLAR_CHANNELS[p].some((c) => opts.blockedChannels.has(c))) continue;
+    const spec = FREE_SESSION_SPECS[p];
+    const modality =
+      p === 'vo2max' ? state.profile.vo2CapableModalities[0] ?? spec.modality : spec.modality;
+    if (p === 'vo2max' && !state.profile.vo2CapableModalities.includes(modality)) continue; // I9: no capable modality, no interval suggestion
+    rationale.push({
+      code: 'free-session-suggestion',
+      params: { pillar: p, acuteLoad: Math.round(state.load.acute[p]), floorCost: CONSTANTS.FLOOR_COST[p]! },
+    });
+    return toPrescription({
+      slot: `${dow}-morning` as PlannedSession['slot'],
+      pillar: p,
+      modality,
+      description: spec.description,
+      durationMinutes: spec.durationMinutes,
+      targetSRPE: spec.targetSRPE,
+    });
+  }
+  return null;
+}
+
 export function layer5Sessions(
   state: UserState,
   date: IsoDate,
@@ -450,11 +595,12 @@ export function layer5Sessions(
 ): Layer5Result {
   const rationale: RationaleCode[] = [];
   if (ctx.fullStop) {
-    return { sessions: null, restructured: false, modifiedByGates: true, rationale };
+    return { sessions: null, restructured: false, modifiedByGates: true, freeSession: null, rationale };
   }
 
   const dow = dayOfWeek(date);
-  const planned = state.standingPlan.weekStructure.find((s) => s.slot.startsWith(dow));
+  const plannedToday = state.standingPlan.weekStructure.filter((s) => s.slot.startsWith(dow));
+  const first = plannedToday[0];
   const illnessGate = ctx.gates.find((g) => g.gate === 'post-illness-ramp');
   const interruptionGate = ctx.gates.find((g) => g.gate === 'interruption-ramp');
   const plyoGate = ctx.gates.find((g) => g.gate === 'plyometric-block');
@@ -470,7 +616,7 @@ export function layer5Sessions(
       stage === 'easy-aerobic-only'
         ? toPrescription(
             {
-              slot: planned?.slot ?? `${dow}-morning`,
+              slot: first?.slot ?? `${dow}-morning`,
               pillar: 'zone2',
               modality: 'run',
               description: 'Post-illness ramp: easy aerobic only, well below LT1',
@@ -481,7 +627,7 @@ export function layer5Sessions(
           )
         : toPrescription(
             {
-              slot: planned?.slot ?? `${dow}-morning`,
+              slot: first?.slot ?? `${dow}-morning`,
               pillar: 'maxStrength',
               modality: 'lift',
               description:
@@ -491,7 +637,7 @@ export function layer5Sessions(
             },
             {},
           );
-    return { sessions: [session], restructured: false, modifiedByGates: true, rationale };
+    return { sessions: [session], restructured: false, modifiedByGates: true, freeSession: null, rationale };
   }
 
   // §6 interruption return ramp overrides the standing session.
@@ -502,101 +648,202 @@ export function layer5Sessions(
         ? 'Return ramp week 1: easy Z2 volume + reduced-volume strength; no intervals, no plyometrics'
         : 'Return ramp week 2: volume rebuilt; one reduced interval session allowed (e.g. 3x3min); plyometrics not yet (connective ramps last)';
     const session = toPrescription({
-      slot: planned?.slot ?? `${dow}-morning`,
-      pillar: week <= 1 ? 'zone2' : (planned?.pillar ?? 'zone2'),
-      modality: planned?.modality === 'lift' ? 'lift' : 'run',
+      slot: first?.slot ?? `${dow}-morning`,
+      pillar: week <= 1 ? 'zone2' : (first?.pillar ?? 'zone2'),
+      modality: first?.modality === 'lift' ? 'lift' : 'run',
       description: desc,
-      durationMinutes: Math.min(planned?.durationMinutes ?? 45, 45),
-      targetSRPE: week <= 1 ? 4 : Math.min(planned?.targetSRPE ?? 5, 6),
+      durationMinutes: Math.min(first?.durationMinutes ?? 45, 45),
+      targetSRPE: week <= 1 ? 4 : Math.min(first?.targetSRPE ?? 5, 6),
     });
-    return { sessions: [session], restructured: false, modifiedByGates: true, rationale };
+    return { sessions: [session], restructured: false, modifiedByGates: true, freeSession: null, rationale };
   }
 
-  if (!planned) {
-    return { sessions: [], restructured: false, modifiedByGates: false, rationale };
-  }
-
-  let session = toPrescription(planned);
-  let modifiedByGates = false;
-  let restructured = false;
-
-  // Deload (deep HRV flag): intervals become Z2 for the week.
-  if (deloadGate && session.pillar === 'vo2max') {
-    session = toPrescription(
-      { ...planned, pillar: 'zone2', description: 'Deload: planned intervals replaced with continuous Z2', targetSRPE: 4 },
-      {},
-    );
-    modifiedByGates = true;
-  }
-
-  // Following-day suppression after a hard unplanned session (§6): lower-body
-  // load and plyometrics come out; upper-emphasis substitution.
-  if (suppressionGate && session.pillar === 'maxStrength') {
-    session = toPrescription(
-      {
-        ...planned,
-        description:
-          'Upper-emphasis strength (following-day suppression after hard unplanned activity); no plyometric primer',
-      },
-      { tissueExposure: ['upperPush', 'upperPull', 'shoulderOverhead'] },
-    );
-    modifiedByGates = true;
-  }
-
-  // Pain block: swap the blocked pattern, keep the rest.
-  for (const g of painGates) {
-    const blocked = g.blockedChannels[0];
-    if (blocked && session.tissueExposure.includes(blocked)) {
-      session = {
-        ...session,
-        blocks: [
-          {
-            name: `Substitution: ${blocked} pattern removed (pain above 3/10); hinge-pattern lower work + upper accessory in its place`,
-          },
-        ],
-        tissueExposure: session.tissueExposure.filter((c) => c !== blocked),
-      };
-      g.substitution = session;
-      modifiedByGates = true;
-    }
-  }
-
-  // Plyometric block and tissue caution: strip high-velocity exposure.
   const strippedChannels = new Set<TissueChannel>([
     ...(plyoGate ? plyoGate.blockedChannels : []),
     ...cautionGates.flatMap((g) => g.blockedChannels),
   ]);
-  if (strippedChannels.size > 0 && PLYO_MARKER.test(planned.description)) {
-    session = {
-      ...session,
-      blocks: [
-        {
-          name: `${planned.description} — plyometric/max-velocity elements removed (${[...strippedChannels].join(', ')})`,
-        },
-      ],
-      tissueExposure: session.tissueExposure.filter((c) => c !== 'connectiveHighVelocity'),
-    };
-    modifiedByGates = true;
+
+  if (plannedToday.length === 0) {
+    const blockedChannels = new Set<TissueChannel>([
+      ...strippedChannels,
+      ...painGates.flatMap((g) => g.blockedChannels),
+      ...(suppressionGate ? suppressionGate.blockedChannels : []),
+    ]);
+    const freeSession = suggestFreeSession(
+      state,
+      ctx,
+      { plyoBlocked: plyoGate !== undefined, deloadActive: deloadGate !== undefined, blockedChannels },
+      dow,
+      rationale,
+    );
+    return { sessions: [], restructured: false, modifiedByGates: false, freeSession, rationale };
   }
 
-  // Declared constraints: restructure under equipment/time facts (SDC-exempt).
+  let modifiedByGates = false;
+  let restructured = false;
   const constraint = activeConstraint(state.profile, date);
-  if (constraint && (constraint.equipment || constraint.dailyMinutesCap)) {
-    const cap = constraint.dailyMinutesCap ?? session.durationMinutes;
-    session = {
-      ...session,
-      durationMinutes: Math.min(session.durationMinutes, cap),
-      blocks: [
+  let constraintApplied = false;
+  let floorsCompressionApplied = false;
+
+  const sessions = plannedToday.map((plannedRaw) => {
+    let planned = plannedRaw;
+
+    // I9 hard invariant: interval work only on a vo2-capable modality. The
+    // standing plan is user-authored, so a violating session is corrected
+    // here — substituted onto the primary capable modality, or converted to
+    // Z2 when none is declared. SDC-exempt: this is a contract invariant,
+    // not a signal response.
+    if (planned.pillar === 'vo2max' && !state.profile.vo2CapableModalities.includes(planned.modality)) {
+      const target = state.profile.vo2CapableModalities[0];
+      if (target) {
+        rationale.push({
+          code: 'i9-modality-substituted',
+          params: { slot: planned.slot, from: planned.modality, to: target },
+        });
+        planned = {
+          ...planned,
+          modality: target,
+          description: `${planned.description} — moved off ${planned.modality} (interval work only on a VO2-capable modality, I9)`,
+        };
+      } else {
+        rationale.push({ code: 'i9-no-capable-modality', params: { slot: planned.slot } });
+        planned = {
+          ...planned,
+          pillar: 'zone2',
+          targetSRPE: Math.min(planned.targetSRPE, 4),
+          description: 'Continuous Z2 below LT1 (no VO2-capable modality declared; intervals withheld, I9)',
+        };
+      }
+      modifiedByGates = true;
+    }
+
+    // Learned slot adherence (§3): a hard session sitting in a slot that
+    // rarely completes gets a move suggestion — a surfaced recommendation,
+    // never a silent plan change. Requires enough observations when the rate
+    // was learned in-app; a seed-declared rate counts as established history.
+    const adherenceRate = state.history.adherenceBySlot[planned.slot];
+    const adherenceObs = state.history.adherenceObservations?.[planned.slot];
+    if (
+      adherenceRate !== undefined &&
+      adherenceRate < CONSTANTS.ADHERENCE_FLAG_RATE &&
+      planned.targetSRPE >= CONSTANTS.ADHERENCE_HARD_SRPE &&
+      (adherenceObs === undefined || adherenceObs >= CONSTANTS.ADHERENCE_MIN_OBSERVATIONS)
+    ) {
+      rationale.push({
+        code: 'low-adherence-slot',
+        params: { slot: planned.slot, completionRate: adherenceRate },
+      });
+    }
+
+    let session = toPrescription(planned);
+
+    // Deload (deep HRV flag): intervals become Z2 for the week.
+    if (deloadGate && session.pillar === 'vo2max') {
+      session = toPrescription(
+        { ...planned, pillar: 'zone2', description: 'Deload: planned intervals replaced with continuous Z2', targetSRPE: 4 },
+        {},
+      );
+      modifiedByGates = true;
+    }
+
+    // Following-day suppression after a hard unplanned session (§6): lower-body
+    // load and plyometrics come out; upper-emphasis substitution.
+    if (suppressionGate && session.pillar === 'maxStrength') {
+      session = toPrescription(
         {
-          name: `${session.blocks[0]?.name ?? planned.description} — adapted to available equipment (${(constraint.equipment ?? state.profile.equipment).join(', ')})`,
+          ...planned,
+          description:
+            'Upper-emphasis strength (following-day suppression after hard unplanned activity); no plyometric primer',
         },
-      ],
-    };
-    session.expectedCost = Math.round(
-      session.targetSRPE * session.durationMinutes * session.modalityMultiplier,
+        { tissueExposure: ['upperPush', 'upperPull', 'shoulderOverhead'] },
+      );
+      modifiedByGates = true;
+    }
+
+    // Pain block: swap the blocked pattern, keep the rest.
+    for (const g of painGates) {
+      const blocked = g.blockedChannels[0];
+      if (blocked && session.tissueExposure.includes(blocked)) {
+        session = {
+          ...session,
+          blocks: [
+            {
+              name: `Substitution: ${blocked} pattern removed (pain above 3/10); hinge-pattern lower work + upper accessory in its place`,
+            },
+          ],
+          tissueExposure: session.tissueExposure.filter((c) => c !== blocked),
+        };
+        g.substitution = session;
+        modifiedByGates = true;
+      }
+    }
+
+    // Plyometric block and tissue caution: strip high-velocity exposure.
+    if (strippedChannels.size > 0 && PLYO_MARKER.test(planned.description)) {
+      session = {
+        ...session,
+        blocks: [
+          {
+            name: `${planned.description} — plyometric/max-velocity elements removed (${[...strippedChannels].join(', ')})`,
+          },
+        ],
+        tissueExposure: session.tissueExposure.filter((c) => c !== 'connectiveHighVelocity'),
+      };
+      modifiedByGates = true;
+    }
+
+    // Declared constraints: restructure under equipment/time facts (SDC-exempt).
+    if (constraint && (constraint.equipment || constraint.dailyMinutesCap)) {
+      const cap = constraint.dailyMinutesCap ?? session.durationMinutes;
+      session = {
+        ...session,
+        durationMinutes: Math.min(session.durationMinutes, cap),
+        blocks: [
+          {
+            name: `${session.blocks[0]?.name ?? planned.description} — adapted to available equipment (${(constraint.equipment ?? state.profile.equipment).join(', ')})`,
+          },
+        ],
+      };
+      session.expectedCost = Math.round(
+        session.targetSRPE * session.durationMinutes * session.modalityMultiplier,
+      );
+      constraintApplied = true;
+    }
+
+    // Floors-only budget: compress today's session.
+    if (ctx.floorsOnly && session.durationMinutes > 40) {
+      session = { ...session, durationMinutes: 40 };
+      session.expectedCost = Math.round(
+        session.targetSRPE * session.durationMinutes * session.modalityMultiplier,
+      );
+      floorsCompressionApplied = true;
+    }
+
+    // Tissue recency (Layer 5 selection input): trim same-day-loaded channels.
+    const hot = session.tissueExposure.filter(
+      (c) =>
+        state.tissue[c].daysSinceLastExposure === 0 &&
+        state.tissue[c].recentLoad >= CONSTANTS.TISSUE_RECENCY_ADJUST_LOAD,
     );
+    if (hot.length > 0) {
+      session = {
+        ...session,
+        blocks: [
+          {
+            name: `${session.blocks[0]?.name ?? planned.description} — reduced volume on ${hot.join(', ')} (loaded yesterday)`,
+          },
+        ],
+      };
+      restructured = true;
+      rationale.push({ code: 'tissue-recency-adjustment', params: { channels: hot.join(',') } });
+    }
+
+    return session;
+  });
+
+  if (constraintApplied) {
     restructured = true;
-    rationale.push({ code: 'declared-constraint-restructure', params: { note: constraint.note ?? '' } });
+    rationale.push({ code: 'declared-constraint-restructure', params: { note: constraint?.note ?? '' } });
   }
 
   // Forward planning for a declared upcoming constraint.
@@ -612,36 +859,12 @@ export function layer5Sessions(
     });
   }
 
-  // Floors-only budget: compress today's session.
-  if (ctx.floorsOnly && session.durationMinutes > 40) {
-    session = { ...session, durationMinutes: 40 };
-    session.expectedCost = Math.round(
-      session.targetSRPE * session.durationMinutes * session.modalityMultiplier,
-    );
+  if (floorsCompressionApplied) {
     restructured = true;
     rationale.push({ code: 'floors-only-compression' });
   }
 
-  // Tissue recency (Layer 5 selection input): trim same-day-loaded channels.
-  const hot = session.tissueExposure.filter(
-    (c) =>
-      state.tissue[c].daysSinceLastExposure === 0 &&
-      state.tissue[c].recentLoad >= CONSTANTS.TISSUE_RECENCY_ADJUST_LOAD,
-  );
-  if (hot.length > 0) {
-    session = {
-      ...session,
-      blocks: [
-        {
-          name: `${session.blocks[0]?.name ?? planned.description} — reduced volume on ${hot.join(', ')} (loaded yesterday)`,
-        },
-      ],
-    };
-    restructured = true;
-    rationale.push({ code: 'tissue-recency-adjustment', params: { channels: hot.join(',') } });
-  }
-
-  return { sessions: [session], restructured, modifiedByGates, rationale };
+  return { sessions, restructured, modifiedByGates, freeSession: null, rationale };
 }
 
 /* ------------------------------------------------------------------ */

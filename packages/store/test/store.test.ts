@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { decide, type EngineEvent, type UserState } from '@peakspan/engine';
-import { activity, illness, planUpdate, profileUpdate, recoverySignal, startBlock, submitRetest, validateEvent, type EventContext } from '@peakspan/adapters';
+import { activity, illness, interruption, planUpdate, profileUpdate, recoverySignal, startBlock, submitRetest, validateEvent, type EventContext } from '@peakspan/adapters';
 import { ImmutabilityViolation, InMemoryEventLog, projectState } from '../src/index';
 
 const root = fileURLToPath(new URL('../../..', import.meta.url));
@@ -192,6 +192,84 @@ describe('projection semantics', () => {
     const s = projectState(seed(), events, '2026-07-28');
     expect(s.history.adherenceBySlot['mon-morning']).toBe(1);
     expect(s.history.adherenceBySlot['thu-evening']).toBe(0);
+    // Observation counts back the Layer 5 minimum-N gate on learned rates.
+    expect(s.history.adherenceObservations?.['mon-morning']).toBe(4);
+    expect(s.history.adherenceObservations?.['thu-evening']).toBe(1);
+  });
+});
+
+describe('trainability learning loop (§7, I8)', () => {
+  const block = (
+    c: EventContext,
+    occurredAt: string,
+    baselineValue: number,
+    thresholdValue: number,
+  ) =>
+    startBlock(
+      {
+        pillar: 'vo2max',
+        plannedWeeks: 8,
+        metricUnderTest: 'vo2max',
+        baselineValue,
+        baselineTypicalError: 2.1,
+        direction: 'increase',
+        thresholdValue,
+        unit: 'ml/kg/min',
+        occurredAt,
+      },
+      c,
+    );
+
+  it('one evaluable block is counted but stays not-yet-identifiable', () => {
+    const c = ctx();
+    const s1 = block(c, '2026-01-05T09:00:00Z', 52.5, 58.5);
+    const r1 = submitRetest(
+      { blockId: s1.id, metric: 'vo2max', value: 59.5, unit: 'ml/kg/min', occurredAt: '2026-03-01T09:00:00Z', source: 'measured-lab' },
+      c,
+    );
+    const s = projectState(seed(), [s1, r1], '2026-03-02');
+    expect(s.trainability.vo2max).toMatchObject({ state: 'not-yet-identifiable', blocksObserved: 1 });
+  });
+
+  it('two evaluable blocks flip to estimated, shrunk toward the prior with a CI', () => {
+    const c = ctx();
+    const s1 = block(c, '2026-01-05T09:00:00Z', 52.5, 58.5);
+    const r1 = submitRetest(
+      { blockId: s1.id, metric: 'vo2max', value: 59.5, unit: 'ml/kg/min', occurredAt: '2026-03-01T09:00:00Z', source: 'measured-lab' },
+      c,
+    );
+    const s2 = block(c, '2026-03-10T09:00:00Z', 59.5, 66);
+    const r2 = submitRetest(
+      { blockId: s2.id, metric: 'vo2max', value: 60.2, unit: 'ml/kg/min', occurredAt: '2026-05-04T09:00:00Z', source: 'measured-lab' },
+      c,
+    );
+    const st = projectState(seed(), [s1, r1, s2, r2], '2026-05-05');
+    const t = st.trainability.vo2max;
+    expect(t.state).toBe('estimated');
+    expect(t.blocksObserved).toBe(2);
+    if (t.state === 'estimated') {
+      // One strong and one near-zero response, shrunk toward the 1.0 prior:
+      // the mean sits between them and the CI is honest about two blocks.
+      expect(t.mean).toBeGreaterThan(0);
+      expect(t.mean).toBeLessThan(1.2);
+      expect(t.ciLow).toBeLessThan(t.mean);
+      expect(t.ciHigh).toBeGreaterThan(t.mean);
+    }
+  });
+
+  it('an interrupted block contributes no dose-response observation', () => {
+    const c = ctx();
+    const s1 = block(c, '2026-01-05T09:00:00Z', 52.5, 58.5);
+    const gap = interruption(
+      { cause: 'travel', startDate: '2026-02-01', endDate: '2026-02-15', occurredAt: '2026-02-15T09:00:00Z' },
+      c,
+    );
+    const r1 = submitRetest(
+      { blockId: s1.id, metric: 'vo2max', value: 59.5, unit: 'ml/kg/min', occurredAt: '2026-03-01T09:00:00Z', source: 'measured-lab' },
+      c,
+    );
+    const st = projectState(seed(), [s1, gap, r1], '2026-03-02');
+    expect(st.trainability.vo2max).toMatchObject({ state: 'not-yet-identifiable', blocksObserved: 0 });
   });
 });
 

@@ -98,13 +98,18 @@ export interface FloorAllocation {
   reservedCost: number;
 }
 
-/** Layer 4: one marginal reallocation of residual budget. */
+/** Layer 4: one pillar's row in the marginal-value ranking. */
 export interface MarginalAllocation {
   pillar: Pillar;
   /** healthSlope * estimatedResponseRate * (1 - injuryHazardDelta). */
   marginalValue: number;
   /** Signed share of weekly budget moved; |value| capped at ~0.15 per step. */
   deltaShareOfBudget: number;
+  /**
+   * Where the response-rate term came from (I8). `population-prior` rows are
+   * rendered with that caveat and may never drive a reallocation.
+   */
+  basis: 'population-prior' | 'estimated';
 }
 
 export interface AllocationReport {
@@ -198,6 +203,14 @@ export interface Decision {
   trace: LayerTrace[];
   /** `null` when Layer 0 or a full Layer 1 illness block stops all training. */
   sessions: SessionPrescription[] | null;
+  /**
+   * Optional suggestion for a day with nothing on the standing plan: the
+   * most-behind pillar floor, given last-7-day load, tissue recency, and
+   * active gates. A suggestion, never a plan change — it does not trip the
+   * noise gate, and rest remains a fully valid choice (section 1, section 9).
+   * `null` when nothing is meaningfully behind or a gate withholds it.
+   */
+  freeSession: SessionPrescription | null;
   medicalStop: MedicalStop | null;
   gates: GateResult[];
   surfacedLevers: LeverSurface[];

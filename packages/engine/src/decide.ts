@@ -24,6 +24,7 @@ import type {
   Decision,
   FloorAllocation,
   LayerTrace,
+  MarginalAllocation,
   RationaleCode,
 } from './types/decision';
 import type { IsoDate } from './types/field';
@@ -31,28 +32,27 @@ import type { Pillar, UserState } from './types/state';
 
 const PILLARS: Pillar[] = ['maxStrength', 'vo2max', 'zone2', 'power', 'mobility'];
 
-function buildAllocation(budget: number, floorsOnly: boolean): AllocationReport {
+function buildAllocation(
+  budget: number,
+  floorsOnly: boolean,
+  deficits: Pillar[],
+  marginal: MarginalAllocation[],
+): AllocationReport {
   const floors = {} as Record<Pillar, FloorAllocation>;
-  const reserved: Record<Pillar, { sessions: number; cost: number }> = {
-    maxStrength: { sessions: CONSTANTS.STRENGTH_FLOOR_SESSIONS, cost: 2 * 40 * 7 },
-    vo2max: { sessions: CONSTANTS.VO2_FLOOR_SESSIONS, cost: 40 * 8.5 },
-    zone2: { sessions: 1, cost: 60 * 4 },
-    power: { sessions: 2, cost: CONSTANTS.POWER_FLOOR_MIN_PER_WEEK * 7 },
-    mobility: { sessions: 5, cost: 5 * 20 * 2 * 0.2 },
-  };
   let reservedCost = 0;
   for (const p of PILLARS) {
+    const cost = CONSTANTS.FLOOR_COST[p] ?? 0;
     floors[p] = {
-      met: true,
-      prescribedSessions: reserved[p].sessions,
-      reservedCost: Math.round(reserved[p].cost),
+      met: !deficits.includes(p),
+      prescribedSessions: CONSTANTS.FLOOR_SESSIONS[p] ?? 0,
+      reservedCost: Math.round(cost),
     };
-    reservedCost += reserved[p].cost;
+    reservedCost += cost;
   }
   return {
     floors,
     residualBudgetCost: floorsOnly ? 0 : Math.max(0, Math.round(budget * 7 - reservedCost)),
-    marginal: [],
+    marginal,
   };
 }
 
@@ -84,6 +84,7 @@ export function decide(state: UserState, date: IsoDate): Decision {
       firedLayer: 0,
       trace,
       sessions: null,
+      freeSession: null,
       medicalStop,
       gates: [],
       surfacedLevers: [],
@@ -104,9 +105,9 @@ export function decide(state: UserState, date: IsoDate): Decision {
 
   const gates = [...l1.gates, ...(l2.sleepLoadCap ? [l2.sleepLoadCap] : [])];
 
-  // Layer 3 — pillar floors.
+  // Layer 3 — pillar floors (budget compression + structural floor audit).
   const l3 = layer3Floors(state, date);
-  trace.push({ layer: 3, fired: l3.floorsOnly, codes: l3.rationale });
+  trace.push({ layer: 3, fired: l3.floorsOnly || l3.deficits.length > 0, codes: l3.rationale });
 
   // Layer 4 — marginal allocation of what remains.
   const l4 = layer4Marginal(state);
@@ -132,7 +133,7 @@ export function decide(state: UserState, date: IsoDate): Decision {
       ? 1
       : l2.surfaces.length > 0
         ? 2
-        : l3.floorsOnly
+        : l3.floorsOnly || l3.deficits.length > 0
           ? 3
           : l4.reallocated
             ? 4
@@ -154,10 +155,13 @@ export function decide(state: UserState, date: IsoDate): Decision {
     firedLayer,
     trace,
     sessions: l5.sessions,
+    freeSession: l5.freeSession,
     medicalStop: null,
     gates,
     surfacedLevers: l2.surfaces,
-    allocation: l1.fullStop ? null : buildAllocation(l3.budget, l3.floorsOnly),
+    allocation: l1.fullStop
+      ? null
+      : buildAllocation(l3.budget, l3.floorsOnly, l3.deficits, l4.marginal),
     noiseGate: {
       outcome: l6.outcome,
       strippedChanges: [],

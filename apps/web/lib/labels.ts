@@ -186,7 +186,23 @@ const RATIONALE_TEXT: Record<string, string> = {
   'forward-plan-constraint': 'A declared upcoming constraint is shaping this week’s plan.',
   'declared-constraint-restructure': 'The week is restructured around a declared constraint (travel, work crunch).',
   'trainability-not-yet-identifiable':
-    'Your individual response rate is not yet identifiable — more block data is needed before reallocating toward it.',
+    'Your individual response rate is not yet identifiable — the ranking below uses population priors, and no budget moves until your own block data supports it.',
+  'estimated-response-includes-zero':
+    'Your estimated response is not distinguishable from zero above measurement noise — no reallocation.',
+  'marginal-reallocation':
+    'Marginal reallocation: your own block data identifies a responder pillar — up to 15% of the weekly budget shifts toward it.',
+  'floor-deficit':
+    'The standing plan is missing a pillar maintenance floor. Losing a pillar costs far more than gaining one is worth — restore its minimum dose.',
+  'i9-modality-substituted':
+    'Interval work was planned on a modality that is not VO₂-capable — moved to your primary capable modality (I9).',
+  'i9-no-capable-modality':
+    'No VO₂-capable modality is declared — interval work is withheld and replaced with Zone 2 (I9).',
+  'low-adherence-slot':
+    'This slot rarely completes — consider moving this hard session to a slot you actually hit. Suggestion only; the plan is unchanged.',
+  'free-session-suggestion':
+    'Nothing is planned today, and one pillar floor is meaningfully behind on your last 7 days — an optional top-up is suggested. Rest remains a valid choice.',
+  'free-session-withheld-sleep-cap':
+    'A free-day session would increase training load while the sleep lever is flagged — withheld until sleep recovers.',
   'tissue-recency-adjustment': 'Session choice adjusted for tissue recency — recently loaded channels get more recovery.',
   'block-interrupted': 'The active block was interrupted — its retest cannot be evaluated as a block outcome.',
 };
