@@ -26,6 +26,23 @@ interface BaseEvent {
   /** When it entered the log (append-only; never mutated). */
   recordedAt: IsoDateTime;
   source: Provenance;
+  /**
+   * id of the NoteEvent this event was parsed from, when it entered the log
+   * via free-text parsing (I2a). The note preserves the user's raw words, so
+   * every machine-structured event stays auditable back to its source.
+   */
+  parsedFrom?: string;
+}
+
+/**
+ * A raw free-text log entry, stored verbatim. The note itself carries no
+ * signal the engine consumes — the structured events parsed from it (each
+ * linking back via `parsedFrom`) do. Keeping the original text in the
+ * append-only log makes the parsing auditable and re-runnable.
+ */
+export interface NoteEvent extends BaseEvent {
+  type: 'note';
+  text: string;
 }
 
 /** Raw daily wearable signal (I4). One reading; rolling means are derived state (I5). */
@@ -203,6 +220,7 @@ export interface PlanUpdateEvent extends BaseEvent {
 }
 
 export type EngineEvent =
+  | NoteEvent
   | RecoverySignalEvent
   | FitnessMeasurementEvent
   | LeverMeasurementEvent

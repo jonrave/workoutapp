@@ -96,7 +96,7 @@ dropped into the Sync tab and are parsed entirely in the browser.
 |---|---|
 | `/today` | Server-rendered per request (`force-dynamic`) — the decision is computed from the log on every load. |
 | `/log`, `/levers`, `/plan`, `/blocks`, `/trends`, `/onboarding` | Same. |
-| `/api/events`, `/api/blocks`, `/api/parse`, `/api/decision` | Serverless functions. |
+| `/api/events`, `/api/blocks`, `/api/note`, `/api/decision` | Serverless functions. |
 
 No route is statically cached, because every page is a function of the current
 event log and today's date.

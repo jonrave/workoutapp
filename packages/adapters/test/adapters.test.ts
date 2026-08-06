@@ -7,9 +7,11 @@ import {
   homeBpProtocol,
   IllPosedThresholdError,
   mapOuraDaily,
+  noteToEvents,
   resolveTypicalError,
   startBlock,
   StubActivityParser,
+  StubNoteParser,
   validateEvent,
   type EventContext,
 } from '../src/index';
@@ -189,6 +191,57 @@ describe('Oura adapter (I4: raw signals only)', () => {
     // The composite scores must leave no trace anywhere in the output (I4).
     expect(JSON.stringify(events)).not.toContain('85');
     expect(JSON.stringify(events)).not.toContain('readiness');
+  });
+});
+
+describe('free-text note parsing (I2a quick log)', () => {
+  it('extracts multiple facts from one note', async () => {
+    const parsed = await new StubNoteParser().parseNote(
+      'ran 40 min easy, knee a bit sore 3/10, slept 6 hours, had 2 beers',
+      '2026-08-05',
+    );
+    expect(parsed.activities).toHaveLength(1);
+    expect(parsed.activities[0]!.modality).toBe('run');
+    expect(parsed.activities[0]!.durationMinutes).toBe(40);
+    expect(parsed.subjective.some((s) => s.pain?.site === 'kneeExtensor' && s.pain.score === 3)).toBe(
+      true,
+    );
+    expect(parsed.levers).toContainEqual({ lever: 'alcoholUnits', value: 2, unit: 'units' });
+    expect(parsed.recoverySignals).toContainEqual({ signal: 'sleepDurationHours', value: 6 });
+  });
+
+  it('noteToEvents keeps the raw note and links every structured event to it', async () => {
+    const parsed = await new StubNoteParser().parseNote(
+      'ran 40 min easy, knee a bit sore 3/10, slept 6 hours, had 2 beers',
+      '2026-08-05',
+    );
+    const { note, events } = noteToEvents('ran 40 min easy…', parsed, '2026-08-05', ctx);
+    expect(note.type).toBe('note');
+    expect(note.text).toBe('ran 40 min easy…');
+    expect(validateEvent(note)).toEqual(note);
+    expect(events.length).toBeGreaterThanOrEqual(4);
+    for (const e of events) {
+      expect(e.parsedFrom).toBe(note.id);
+      expect(e.source).toBe('user-reported');
+      expect(validateEvent(e)).toEqual(e);
+    }
+  });
+
+  it('a note with no recognizable facts still yields a valid NoteEvent', async () => {
+    const parsed = await new StubNoteParser().parseNote('feeling okay today', '2026-08-05');
+    const { note, events } = noteToEvents('feeling okay today', parsed, '2026-08-05', ctx);
+    expect(events).toHaveLength(0);
+    expect(validateEvent(note)).toEqual(note);
+  });
+
+  it('illness language becomes an illness event with a systemic flag', async () => {
+    const parsed = await new StubNoteParser().parseNote(
+      'woke up with a fever and body aches, skipping training',
+      '2026-08-05',
+    );
+    expect(parsed.illness).toHaveLength(1);
+    expect(parsed.illness[0]!.systemic).toBe(true);
+    expect(parsed.illness[0]!.phase).toBe('onset');
   });
 });
 

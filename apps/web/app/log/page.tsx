@@ -3,7 +3,7 @@ import { currentState } from '../../lib/data';
 import { StorageNotice } from '../../components/StorageNotice';
 import { DeviceSync } from '../../components/DeviceSync';
 import { SessionLogger } from '../../components/SessionLogger';
-import { FreeTextLog, MorningCheckIn } from './LogForms';
+import { QuickLog, MorningCheckIn } from './LogForms';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,8 +23,8 @@ export default async function LogPage() {
     <>
       <StorageNotice />
       <section className="card">
-        <h2>Free-text log</h2>
-        <FreeTextLog />
+        <h2>Quick log</h2>
+        <QuickLog />
       </section>
       <section className="card">
         <h2>Planned sessions</h2>

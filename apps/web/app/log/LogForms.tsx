@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { slotLabel, tissueLabel } from '../../lib/labels';
+import { tissueLabel } from '../../lib/labels';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -19,57 +19,39 @@ function Notice({ state }: { state: { kind: 'ok' | 'error'; text: string } | nul
   return <div className={`notice ${state.kind}`}>{state.text}</div>;
 }
 
-interface Draft {
-  modality: string;
-  durationMinutes: number;
-  sRPE: number;
-  description: string;
-  pillarLoad: Record<string, number>;
-  tissueChannels: string[];
+interface NoteResult {
+  summary: string;
   confidence: string;
+  recorded: Array<{ type: string; label: string }>;
+  skipped?: string[];
 }
 
-export function FreeTextLog() {
+const eventTypeLabel: Record<string, string> = {
+  activity: 'Activity',
+  subjective: 'Check-in',
+  illness: 'Illness',
+  injury: 'Injury',
+  'lever-measurement': 'Lever',
+  'recovery-signal': 'Sleep',
+};
+
+export function QuickLog() {
   const [text, setText] = useState('');
-  const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<NoteResult | null>(null);
   const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-  async function parse() {
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
     setNotice(null);
+    setResult(null);
     setBusy(true);
     try {
-      const result = await post('/api/parse', { text, date: today() });
-      if ('error' in result && result.error) setNotice({ kind: 'error', text: String(result.error) });
-      else setDraft(result as unknown as Draft);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirm() {
-    if (!draft) return;
-    setBusy(true);
-    try {
-      const tissueLoad = Object.fromEntries(
-        draft.tissueChannels.map((c) => [c, Math.round((draft.sRPE * draft.durationMinutes) / Math.max(1, draft.tissueChannels.length))]),
-      );
-      const result = await post('/api/events', {
-        kind: 'activity',
-        planned: false,
-        plannedSlot: null,
-        modality: draft.modality,
-        durationMinutes: draft.durationMinutes,
-        sRPE: draft.sRPE,
-        occurredAt: `${today()}T12:00:00Z`,
-        pillarLoad: draft.pillarLoad,
-        tissueLoad,
-        description: draft.description,
-      });
-      if (result.error) setNotice({ kind: 'error', text: result.error });
-      else {
-        setNotice({ kind: 'ok', text: 'Activity logged.' });
-        setDraft(null);
+      const res = await post('/api/note', { text, date: today() });
+      if (res.error) {
+        setNotice({ kind: 'error', text: String(res.error) });
+      } else {
+        setResult(res as unknown as NoteResult);
         setText('');
       }
     } finally {
@@ -79,72 +61,42 @@ export function FreeTextLog() {
 
   return (
     <div>
-      <form
-        className="stack"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void parse();
-        }}
-      >
+      <form className="stack" onSubmit={(e) => void submit(e)}>
         <label>
-          Describe what you did — a draft is parsed for your confirmation; nothing enters the log
-          until you approve it
+          Anything worth remembering — a workout, soreness, sleep, beers, illness. It is saved
+          verbatim and structured into the log for you; below you see exactly what was recorded.
           <textarea
             rows={2}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="played 70 min pickup soccer, legs cooked"
+            placeholder="ran 40 min easy, knee a bit sore 2/10, slept 6h, 2 beers last night"
           />
         </label>
-        <button type="submit" disabled={busy}>
-          {busy && !draft ? 'Parsing…' : 'Parse draft'}
+        <button type="submit" disabled={busy || text.trim().length < 3}>
+          {busy ? 'Saving…' : 'Save to log'}
         </button>
       </form>
-      {draft && (
+      {result && (
         <div className="card" style={{ marginTop: '0.8rem' }}>
-          <h2>Draft — confirm or discard</h2>
-          <div className="table-scroll">
-            <table className="plain">
-              <tbody>
-                <tr>
-                  <th>Modality</th>
-                  <td>{draft.modality}</td>
-                  <th>Duration</th>
-                  <td>
-                    <input
-                      type="number"
-                      value={draft.durationMinutes}
-                      onChange={(e) => setDraft({ ...draft, durationMinutes: Number(e.target.value) })}
-                      style={{ width: '5rem' }}
-                    />{' '}
-                    min
-                  </td>
-                </tr>
-                <tr>
-                  <th>sRPE</th>
-                  <td>
-                    <input
-                      type="number"
-                      min={0}
-                      max={10}
-                      value={draft.sRPE}
-                      onChange={(e) => setDraft({ ...draft, sRPE: Number(e.target.value) })}
-                      style={{ width: '4rem' }}
-                    />
-                  </td>
-                  <th>Tissue</th>
-                  <td className="muted">{draft.tissueChannels.map(tissueLabel).join(', ') || '—'}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <p className="muted">Parser confidence: {draft.confidence}</p>
-          <button onClick={() => void confirm()} disabled={busy}>
-            {busy ? 'Logging…' : 'Confirm & log'}
-          </button>{' '}
-          <button className="secondary" onClick={() => setDraft(null)} disabled={busy}>
-            Discard
-          </button>
+          <h2>Recorded</h2>
+          <p>{result.summary}</p>
+          {result.recorded.length > 0 ? (
+            <ul>
+              {result.recorded.map((r, i) => (
+                <li key={i}>
+                  <strong>{eventTypeLabel[r.type] ?? r.type}</strong> — {r.label}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">
+              No structured facts recognized — the note itself is saved and stays in your history.
+            </p>
+          )}
+          {result.skipped && result.skipped.length > 0 && (
+            <p className="muted">Not recorded (implausible values): {result.skipped.join('; ')}</p>
+          )}
+          <p className="muted">Parser confidence: {result.confidence}. The raw note is kept verbatim.</p>
         </div>
       )}
       <Notice state={notice} />

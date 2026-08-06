@@ -1,7 +1,9 @@
 /**
  * Free-text activity parsing (I2a): an LLM may parse logs into structured
- * events, never choose training. The parser returns a DRAFT the user must
- * confirm; only the confirmed ActivityEvent enters the log.
+ * events, never choose training. This module is the single-activity draft
+ * interface; the app's quick-log flow lives in ./note, which records parsed
+ * events directly alongside the verbatim note (the note is the audit trail
+ * that replaces per-event confirmation).
  */
 import type { IsoDate, Modality, Pillar, TissueChannel } from '@peakspan/engine';
 
@@ -40,16 +42,16 @@ export class StubActivityParser implements ActivityParser {
       sRPE = 8;
       pillar = 'vo2max';
       tissueChannels = ['hamstringHighVelocity', 'connectiveHighVelocity', 'kneeExtensor'];
-    } else if (/hike/.test(lower)) {
+    } else if (/hik(e|ed|ing)/.test(lower)) {
       modality = 'hike';
       sRPE = 5;
       tissueChannels = ['kneeExtensor', 'calfAchillesHighVelocity'];
-    } else if (/(run|jog)/.test(lower)) {
+    } else if (/\b(run|ran|running|jog|jogged)\b/.test(lower)) {
       modality = 'run';
       sRPE = /(hard|race|interval|tempo)/.test(lower) ? 8 : 4;
       pillar = sRPE >= 7 ? 'vo2max' : 'zone2';
       tissueChannels = ['calfAchillesHighVelocity', 'kneeExtensor', 'hipExtensor'];
-    } else if (/(lift|gym|squat|deadlift|bench)/.test(lower)) {
+    } else if (/(lift|lifted|gym|squat|deadlift|bench)/.test(lower)) {
       modality = 'lift';
       sRPE = 7;
       pillar = 'maxStrength';

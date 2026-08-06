@@ -47,7 +47,14 @@ const base = {
   occurredAt: isoDateTime,
   recordedAt: isoDateTime,
   source: provenance,
+  parsedFrom: z.string().min(1).optional(),
 };
+
+export const noteSchema = z.object({
+  ...base,
+  type: z.literal('note'),
+  text: z.string().min(1).max(10_000),
+});
 
 export const recoverySignalSchema = z.object({
   ...base,
@@ -234,6 +241,7 @@ export const planUpdateSchema = z.object({
 });
 
 export const engineEventSchema = z.discriminatedUnion('type', [
+  noteSchema,
   recoverySignalSchema,
   fitnessMeasurementSchema,
   leverMeasurementSchema,
