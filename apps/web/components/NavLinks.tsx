@@ -10,6 +10,7 @@ const LINKS = [
   { href: '/plan', label: 'Plan' },
   { href: '/blocks', label: 'Blocks' },
   { href: '/trends', label: 'Trends' },
+  { href: '/chat', label: 'Chat' },
   { href: '/onboarding', label: 'Intake' },
 ];
 

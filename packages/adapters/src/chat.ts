@@ -67,10 +67,11 @@ export class StubChatClient implements ChatClient {
  */
 export class StubMemoryDistiller implements MemoryDistiller {
   async distill(input: DistillInput): Promise<string> {
+    const prior = input.priorMemory?.trim();
     const bullets = input.transcript
       .filter((t) => t.role === 'user')
-      .map((t) => `- Asked: ${t.content.slice(0, 120)}`);
-    const prior = input.priorMemory?.trim();
+      .map((t) => `- Asked: ${t.content.slice(0, 120)}`)
+      .filter((b) => !prior?.includes(b)); // re-distilling the same conversation must not duplicate
     return [prior, ...bullets].filter(Boolean).join('\n');
   }
 }

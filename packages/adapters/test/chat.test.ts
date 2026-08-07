@@ -44,6 +44,14 @@ describe('stub memory distiller', () => {
     expect(result).not.toContain('Retest is in two weeks.'); // assistant turns are not memorized
   });
 
+  it('re-distilling the same conversation does not duplicate bullets', async () => {
+    const distiller = new StubMemoryDistiller();
+    const transcript = [{ role: 'user' as const, content: 'How is my VO2max block going?' }];
+    const first = await distiller.distill({ priorMemory: null, transcript });
+    const second = await distiller.distill({ priorMemory: first, transcript });
+    expect(second).toBe(first);
+  });
+
   it('starts from nothing when there is no prior memory', async () => {
     const distiller = new StubMemoryDistiller();
     const result = await distiller.distill({
