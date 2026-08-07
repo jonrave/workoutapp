@@ -50,16 +50,30 @@ table, revoking `UPDATE`/`DELETE` from the `peakspan_app` role if that role
 exists (I10: a registered threshold can never be edited after the fact).
 Running the migration manually with `psql` still works and is equivalent.
 
+The chat store migrates itself the same way: on first use of `/chat` the
+schema embedded in `packages/store/src/postgres-conversations.ts` (kept in
+sync with `packages/store/migrations/002_conversations.sql` by a test)
+creates three more INSERT-only tables — `conversations`,
+`conversation_messages`, and `memory_versions` — under the same role grants.
+Transcripts are append-only and distilled memory is versioned, never
+overwritten.
+
 **Use a pooled connection string.** Serverless functions open many short-lived
 connections; Neon's pooler endpoint or Supabase's `6543` pooler port avoids
 exhausting the server's connection limit. A direct connection will work in
 testing and fall over under real traffic.
 
-## 4. Optional: free-text parsing
+## 4. Optional: free-text parsing and chat
 
-Add `ANTHROPIC_API_KEY` to use the Claude-backed activity parser. Without it
-the deterministic keyword stub runs instead, so the confirm-before-log flow
-still works offline — the LLM is never in the decision path either way (I2).
+Add `ANTHROPIC_API_KEY` to use the Claude-backed activity parser and the
+`/chat` assistant with memory distillation. Without it deterministic stubs run
+instead, so the confirm-before-log flow and the whole chat/memory loop still
+work offline — the LLM is never in the decision path either way (I2). Chat is
+explanation on demand (I2c): the model gets no tools, cannot write events, and
+its system prompt forbids prescribing training. Conversations persist verbatim
+in the conversation store, and after each exchange the transcript is distilled
+into a versioned durable-memory document that is injected into future
+conversations and shown verbatim on the Chat page.
 
 ## 5. Optional: device sync (Oura + Strava)
 
@@ -95,8 +109,9 @@ dropped into the Sync tab and are parsed entirely in the browser.
 | Route | Notes |
 |---|---|
 | `/today` | Server-rendered per request (`force-dynamic`) — the decision is computed from the log on every load. |
-| `/log`, `/levers`, `/plan`, `/blocks`, `/trends`, `/onboarding` | Same. |
+| `/log`, `/levers`, `/plan`, `/blocks`, `/trends`, `/onboarding`, `/chat` | Same. |
 | `/api/events`, `/api/blocks`, `/api/parse`, `/api/decision` | Serverless functions. |
+| `/api/chat`, `/api/chat/conversations`, `/api/chat/conversations/[id]`, `/api/chat/memory`, `/api/chat/search` | Serverless functions — chat turns, transcript reads, memory read/distill-now, message search. |
 
 No route is statically cached, because every page is a function of the current
 event log and today's date.

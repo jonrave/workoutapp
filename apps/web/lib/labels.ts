@@ -82,6 +82,17 @@ export const SOURCE_LABELS: Record<string, string> = {
   'device-derived': 'device',
 };
 
+/** Decision cascade layer names (contract §4). */
+export const LAYER_NAMES: Record<number, string> = {
+  0: 'medical red flag',
+  1: 'injury & illness gate',
+  2: 'non-training lever',
+  3: 'pillar floors',
+  4: 'marginal allocation',
+  5: 'session selection',
+  6: 'noise gate',
+};
+
 export const GATE_LABELS: Record<string, string> = {
   'systemic-illness': 'Illness — no training',
   'pain-block': 'Pain — pattern blocked',

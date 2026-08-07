@@ -8,6 +8,7 @@ import { currentDecision, todayIso } from '../../lib/data';
 import { SessionLogger } from '../../components/SessionLogger';
 import { MorningCheckIn } from '../log/LogForms';
 import {
+  LAYER_NAMES,
   gateLabel,
   modalityLabel,
   pillarLabel,
@@ -21,16 +22,6 @@ import {
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = { title: 'Today' };
-
-const LAYER_NAMES: Record<number, string> = {
-  0: 'medical red flag',
-  1: 'injury & illness gate',
-  2: 'non-training lever',
-  3: 'pillar floors',
-  4: 'marginal allocation',
-  5: 'session selection',
-  6: 'noise gate',
-};
 
 const DAY_PREFIX = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 

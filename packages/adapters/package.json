@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./claude": "./src/claude.ts"
+    "./claude": "./src/claude.ts",
+    "./claude-chat": "./src/claude-chat.ts"
   },
   "description": "Ingestion adapters (contract Step 4): normalize form payloads, guided protocols, device payloads, and free text into EngineEvents. Adapters do nothing else.",
   "dependencies": {

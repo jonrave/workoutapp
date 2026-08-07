@@ -7,7 +7,14 @@
  */
 import { decide, type Decision, type EngineEvent, type UserState } from '@peakspan/engine';
 import { fitnessMeasurement, leverMeasurement, recoverySignal } from '@peakspan/adapters';
-import { InMemoryEventLog, projectState, type EventLog } from '@peakspan/store';
+import {
+  InMemoryConversationStore,
+  InMemoryEventLog,
+  projectState,
+  type ConversationStore,
+  type EventLog,
+  type MemoryStore,
+} from '@peakspan/store';
 // Static import, not a runtime readFileSync: the seed must be compiled into
 // the bundle so it survives serverless deployment, where the repo's fixtures
 // directory is not on disk next to the running function.
@@ -62,6 +69,8 @@ async function seedDemoEvents(log: EventLog): Promise<void> {
 
 interface AppStore {
   log: EventLog;
+  /** Chat transcripts + distilled memory. Never read by the engine (I2). */
+  chat: ConversationStore & MemoryStore;
   seed: UserState;
   ready: Promise<void>;
 }
@@ -73,17 +82,29 @@ export function getStore(): AppStore {
     const seed = loadSeed();
     if (process.env.DATABASE_URL) {
       // Deferred import keeps pg out of the demo path.
-      const store: AppStore = { log: undefined as unknown as EventLog, seed, ready: Promise.resolve() };
+      const store: AppStore = {
+        log: undefined as unknown as EventLog,
+        chat: undefined as unknown as ConversationStore & MemoryStore,
+        seed,
+        ready: Promise.resolve(),
+      };
       store.ready = import('@peakspan/store/postgres').then((m) => {
         store.log = m.PostgresEventLog.fromConnectionString(process.env.DATABASE_URL!);
+        store.chat = m.PostgresConversationStore.fromConnectionString(process.env.DATABASE_URL!);
       });
       g.__peakspan = store;
     } else {
       const log = new InMemoryEventLog();
-      g.__peakspan = { log, seed, ready: seedDemoEvents(log) };
+      g.__peakspan = { log, chat: new InMemoryConversationStore(), seed, ready: seedDemoEvents(log) };
     }
   }
   return g.__peakspan;
+}
+
+export async function getChatStore(): Promise<ConversationStore & MemoryStore> {
+  const store = getStore();
+  await store.ready;
+  return store.chat;
 }
 
 export function todayIso(): string {

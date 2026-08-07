@@ -8,6 +8,9 @@ import pg from 'pg';
 import type { EngineEvent } from '@peakspan/engine';
 import { ImmutabilityViolation, type EventLog } from './log';
 
+// Re-exported here so the app layer keeps a single deferred postgres import.
+export { PostgresConversationStore } from './postgres-conversations';
+
 /**
  * Idempotent copy of migrations/001_init.sql (kept in sync by
  * store.test.ts). Embedded so a fresh deployment self-migrates on first
