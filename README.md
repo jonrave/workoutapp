@@ -14,7 +14,7 @@ session," and the UI treats that as the success state it is.
 | `fixtures/` | Step 2 | Subject A plus 37 user-approved scenarios (`scenarios.md` human-readable, `scenarios.json` machine-checkable). The engine's test suite runs all of them. |
 | `packages/adapters` | Step 4 | Manual entry, guided protocols (CMJ median-of-5, home-BP 7-day), Oura raw-signals-only mapping, and free-text parsing behind an interface (drafts require confirmation; the Claude parser is an optional separate export). |
 | `packages/store` | Step 5 | Append-only event log (in-memory + Postgres) and the state projector. State is recomputable from the log; pre-registered thresholds are immutable. |
-| `apps/web` | Step 6 | Thin Next.js UI: Today (decision + why), Log, Levers, Plan, Blocks (registration refuses ill-posed thresholds), Trends (SDC bands on every chart), Intake. |
+| `apps/web` | Step 6 | Thin Next.js UI: Today (decision + why), Log, Levers, Plan, Blocks (registration refuses ill-posed thresholds), Trends (SDC bands on every chart), Intake. Plus Dinner, a standalone photo-to-dinner-suggestion page outside the engine's lanes. |
 
 ## Run
 
@@ -26,4 +26,5 @@ cd apps/web && npx next dev   # demo seeded from fixtures/subjects/subject-a.jso
 
 Set `DATABASE_URL` for Postgres persistence (`packages/store/migrations/`), and
 `ANTHROPIC_API_KEY` to use the Claude-backed activity parser instead of the
-offline stub.
+offline stub. The same key powers the Dinner page (photo of ingredients →
+dinner suggestion), which returns a clear error without it.

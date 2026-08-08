@@ -8,6 +8,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@peakspan/adapters": "*",
     "@peakspan/engine": "*",
     "@peakspan/store": "*",

@@ -11,6 +11,7 @@ const LINKS = [
   { href: '/blocks', label: 'Blocks' },
   { href: '/trends', label: 'Trends' },
   { href: '/chat', label: 'Chat' },
+  { href: '/dinner', label: 'Dinner' },
   { href: '/onboarding', label: 'Intake' },
 ];
 
