@@ -152,6 +152,188 @@ export function FreeTextLog() {
   );
 }
 
+/**
+ * Stream file drop: the first-cut ingest path for raw HR streams (a Strava
+ * stream export JSON). Band math runs server-side against the personal
+ * calibration for the chosen modality; payloads carrying only device zone
+ * labels are rejected there with an explanation, by design.
+ */
+export function StreamDropLog() {
+  const [payload, setPayload] = useState('');
+  const [modality, setModality] = useState('run');
+  const [date, setDate] = useState(today());
+  const [environment, setEnvironment] = useState('outdoor');
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  async function onFile(file: File) {
+    setPayload(await file.text());
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setNotice(null);
+    let stream: unknown;
+    try {
+      stream = JSON.parse(payload);
+    } catch {
+      setNotice({ kind: 'error', text: 'That is not valid JSON. Drop a Strava stream export file or paste its contents.' });
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await post('/api/events', {
+        kind: 'aerobic-stream',
+        modality,
+        occurredAt: `${date}T12:00:00Z`,
+        environment,
+        stream,
+      });
+      if (result.error) setNotice({ kind: 'error', text: result.error });
+      else {
+        setNotice({ kind: 'ok', text: 'Stream computed and logged: time in band against your personal bands, plus cardiac drift.' });
+        setPayload('');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="stack" onSubmit={(e) => void submit(e)}>
+      <label>
+        Stream file (Strava streams JSON: time, heartrate, optionally velocity or watts)
+        <input
+          type="file"
+          accept="application/json,.json"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onFile(f);
+          }}
+        />
+      </label>
+      <label>
+        Or paste the stream JSON
+        <textarea
+          rows={2}
+          value={payload}
+          onChange={(e) => setPayload(e.target.value)}
+          placeholder='{"time": [0, 5, ...], "heartrate": [131, 133, ...], "velocity": [3.1, ...]}'
+        />
+      </label>
+      <label>
+        Modality — band math needs a calibration for this exact modality; only running is calibrated so far
+        <select value={modality} onChange={(e) => setModality(e.target.value)}>
+          {['run', 'airBike', 'spinBike', 'row', 'swim', 'hike'].map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Date
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      <label>
+        Environment — outdoor sessions usually confound cardiac drift, and that is reported honestly
+        <select value={environment} onChange={(e) => setEnvironment(e.target.value)}>
+          {['outdoor', 'treadmill', 'indoor', 'unknown'].map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button type="submit" disabled={busy || !payload}>
+        {busy ? 'Computing…' : 'Compute & log'}
+      </button>
+      <Notice state={notice} />
+    </form>
+  );
+}
+
+/** Cooper 12-minute test entry. Track and treadmill stay separate series forever. */
+export function CooperTestLog() {
+  const [surface, setSurface] = useState('track');
+  const [distance, setDistance] = useState(2800);
+  const [pacing, setPacing] = useState('');
+  const [ramp, setRamp] = useState('');
+  const [date, setDate] = useState(today());
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await post('/api/events', {
+        kind: 'cooper-test',
+        surface,
+        distanceMeters: distance,
+        pacingStrategy: pacing,
+        occurredAt: `${date}T09:00:00Z`,
+        ...(surface === 'treadmill' && ramp ? { rampCorrection: ramp } : {}),
+      });
+      if (result.error) setNotice({ kind: 'error', text: result.error });
+      else setNotice({ kind: 'ok', text: 'Cooper test recorded in its own series.' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="stack" onSubmit={(e) => void submit(e)}>
+      <label>
+        Surface — the two series are never pooled
+        <select value={surface} onChange={(e) => setSurface(e.target.value)}>
+          <option value="track">outdoor track</option>
+          <option value="treadmill">treadmill</option>
+        </select>
+      </label>
+      <label>
+        Distance in 12 minutes (meters)
+        <input
+          type="number"
+          min={1000}
+          max={5000}
+          value={distance}
+          onChange={(e) => setDistance(Number(e.target.value))}
+        />
+      </label>
+      <label>
+        Pacing strategy (recorded with the test)
+        <input
+          type="text"
+          value={pacing}
+          onChange={(e) => setPacing(e.target.value)}
+          placeholder="even splits, no sprint finish"
+        />
+      </label>
+      {surface === 'treadmill' && (
+        <label>
+          Ramp correction — required for treadmill tests
+          <input
+            type="text"
+            value={ramp}
+            onChange={(e) => setRamp(e.target.value)}
+            placeholder="1% incline throughout"
+          />
+        </label>
+      )}
+      <label>
+        Date
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </label>
+      <button type="submit" disabled={busy || !pacing}>
+        {busy ? 'Saving…' : 'Record test'}
+      </button>
+      <Notice state={notice} />
+    </form>
+  );
+}
+
 export function MorningCheckIn() {
   const [soreness, setSoreness] = useState(2);
   const [painSite, setPainSite] = useState('');

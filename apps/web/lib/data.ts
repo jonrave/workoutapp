@@ -19,6 +19,7 @@ import {
 // the bundle so it survives serverless deployment, where the repo's fixtures
 // directory is not on disk next to the running function.
 import subjectA from '../../../fixtures/subjects/subject-a.json';
+import runHrBands from '../../../fixtures/calibrations/run-hr-bands.json';
 
 export function loadSeed(): UserState {
   // structuredClone so per-request projection never mutates the shared module.
@@ -148,4 +149,47 @@ export async function readEvents(): Promise<EngineEvent[]> {
   const store = getStore();
   await store.ready;
   return store.log.read();
+}
+
+/**
+ * Latest band calibration on record for a modality (I9: bands are strictly
+ * per-modality; there is no fallback to another modality's bands). The
+ * user-declared run calibration (fixtures/calibrations/run-hr-bands.json) is
+ * appended on first need with a deterministic id, so both the demo log and a
+ * fresh Postgres log converge on the same event. Every other modality stays
+ * uncalibrated — and therefore without band math — until calibrated
+ * explicitly.
+ */
+export async function latestCalibration(
+  modality: string,
+): Promise<Extract<EngineEvent, { type: 'hr-band-calibration' }> | null> {
+  const find = (events: EngineEvent[]) => {
+    const cals = events.filter(
+      (e): e is Extract<EngineEvent, { type: 'hr-band-calibration' }> =>
+        e.type === 'hr-band-calibration' && e.modality === modality,
+    );
+    return cals.length > 0 ? cals[cals.length - 1]! : null;
+  };
+  const existing = find(await readEvents());
+  if (existing || modality !== 'run') return existing;
+
+  const cal = runHrBands.calibration;
+  const event: Extract<EngineEvent, { type: 'hr-band-calibration' }> = {
+    id: `hrcal_run_${cal.calibratedOn}`,
+    type: 'hr-band-calibration',
+    occurredAt: `${cal.calibratedOn}T00:00:00Z`,
+    recordedAt: new Date().toISOString(),
+    source: 'user-reported',
+    modality: 'run',
+    hrMaxBpm: cal.hrMaxBpm,
+    hrRestBpm: cal.hrRestBpm,
+    bands: cal.bands,
+    method: cal.method,
+  };
+  try {
+    await appendEvent(event);
+  } catch {
+    // A concurrent request appended it first; the read below settles it.
+  }
+  return find(await readEvents());
 }

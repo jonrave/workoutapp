@@ -1,6 +1,7 @@
 export * from './types/index';
 export { CONSTANTS } from './constants';
 export * from './derive';
+export * from './aerobic';
 export {
   layer0Medical,
   layer1Gates,

@@ -233,6 +233,88 @@ export const planUpdateSchema = z.object({
   note: z.string().optional(),
 });
 
+const hrBandSchema = z.object({
+  name: z.string().min(1),
+  lowerBpm: z.number().min(0),
+  upperBpm: z.number().min(1).nullable(),
+});
+
+export const hrBandCalibrationSchema = z.object({
+  ...base,
+  type: z.literal('hr-band-calibration'),
+  modality,
+  hrMaxBpm: z.number().min(100).max(230),
+  hrRestBpm: z.number().min(25).max(100),
+  bands: z.array(hrBandSchema).min(2),
+  method: z.string().optional(),
+});
+
+const driftSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('measured'),
+    deltaBpm: z.number(),
+    firstHalfMeanBpm: z.number(),
+    secondHalfMeanBpm: z.number(),
+    workRateSource: z.enum(['watts', 'velocity']),
+    workRateHalfDeltaPct: z.number(),
+  }),
+  z.object({
+    kind: z.literal('confounded'),
+    reason: z.enum(['no-work-rate-stream', 'work-rate-mismatch-between-halves', 'variable-work-rate']),
+    deltaBpm: z.number(),
+    firstHalfMeanBpm: z.number(),
+    secondHalfMeanBpm: z.number(),
+    workRateSource: z.enum(['watts', 'velocity']).nullable(),
+    workRateHalfDeltaPct: z.number().nullable(),
+  }),
+  z.object({
+    kind: z.literal('unavailable'),
+    reason: z.enum(['too-short', 'too-few-samples']),
+  }),
+]);
+
+export const aerobicSessionSchema = z.object({
+  ...base,
+  type: z.literal('aerobic-session'),
+  activityId: z.string().optional(),
+  modality,
+  calibrationId: z.string().min(1),
+  durationSeconds: z.number().nonnegative(),
+  trackedSeconds: z.number().nonnegative(),
+  gapSeconds: z.number().nonnegative(),
+  timeInBandSeconds: z.record(z.string(), z.number().nonnegative()),
+  meanHrBpm: z.number().nonnegative(),
+  maxHrBpm: z.number().nonnegative(),
+  drift: driftSchema,
+  environment: z.enum(['outdoor', 'treadmill', 'indoor', 'unknown']),
+});
+
+/** trust is the literal 'low': the schema, like the type, admits nothing else. */
+export const bucketedZoneMinutesSchema = z.object({
+  ...base,
+  type: z.literal('bucketed-zone-minutes'),
+  device: z.string().min(1),
+  trust: z.literal('low'),
+  modality,
+  durationMinutes: z.number().positive(),
+  minutesAboveThreshold: z
+    .array(z.object({ thresholdBpm: z.number().positive(), minutes: z.number().nonnegative() }))
+    .optional(),
+  deviceBuckets: z.array(z.object({ label: z.string().min(1), minutes: z.number().nonnegative() })).optional(),
+  note: z.string().optional(),
+});
+
+export const cooperTestSchema = z.object({
+  ...base,
+  type: z.literal('cooper-test'),
+  surface: z.enum(['track', 'treadmill']),
+  distanceMeters: z.number().min(1000).max(5000),
+  vo2maxEstimate: z.number(),
+  pacingStrategy: z.string().min(1),
+  rampCorrection: z.string().optional(),
+  typicalError: z.number().positive().optional(),
+});
+
 export const engineEventSchema = z.discriminatedUnion('type', [
   recoverySignalSchema,
   fitnessMeasurementSchema,
@@ -247,6 +329,10 @@ export const engineEventSchema = z.discriminatedUnion('type', [
   retestSchema,
   profileUpdateSchema,
   planUpdateSchema,
+  hrBandCalibrationSchema,
+  aerobicSessionSchema,
+  bucketedZoneMinutesSchema,
+  cooperTestSchema,
 ]);
 
 /** Validate an unknown payload as an EngineEvent; throws on failure. */
