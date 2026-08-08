@@ -8,6 +8,7 @@
  */
 
 import type { IsoDate, IsoDateTime, Provenance } from './field';
+import type { CardiacDriftResult, CooperSurface, HrBand } from './aerobic';
 import type {
   FitnessMetric,
   Modality,
@@ -202,6 +203,95 @@ export interface PlanUpdateEvent extends BaseEvent {
   note?: string;
 }
 
+/**
+ * A declared per-modality HR band calibration (I9: zones are per-modality,
+ * never from `220 − age`). Recalibration is a new event; computed sessions
+ * reference the calibration they used by event id, so a later recalibration
+ * can never silently rewrite history.
+ */
+export interface HrBandCalibrationEvent extends BaseEvent {
+  type: 'hr-band-calibration';
+  modality: Modality;
+  hrMaxBpm: number;
+  hrRestBpm: number;
+  /** Ordered, contiguous, non-overlapping; validated at the adapter boundary. */
+  bands: HrBand[];
+  method?: string;
+}
+
+/**
+ * The computed summary of one raw heart-rate stream: time in band against
+ * the personal calibration, plus cardiac drift. Only raw samples ever feed
+ * this — device zone labels are rejected at the adapter boundary and are not
+ * representable here. The stream itself stays outside the log (it is a
+ * source blob, not an event); this summary is deterministic given the stream
+ * and the referenced calibration.
+ */
+export interface AerobicSessionEvent extends BaseEvent {
+  type: 'aerobic-session';
+  /** id of the ActivityEvent this stream belongs to, when known (e.g. strava_<id>). */
+  activityId?: string;
+  modality: Modality;
+  /** id of the HrBandCalibrationEvent the band math used. */
+  calibrationId: string;
+  durationSeconds: number;
+  /** Seconds attributed to bands; gaps beyond the cap are excluded, not guessed. */
+  trackedSeconds: number;
+  gapSeconds: number;
+  /** Seconds per band name from the calibration. */
+  timeInBandSeconds: Record<string, number>;
+  meanHrBpm: number;
+  maxHrBpm: number;
+  drift: CardiacDriftResult;
+  /** Outdoor runs confound drift; treadmill sessions can be clean. */
+  environment: 'outdoor' | 'treadmill' | 'indoor' | 'unknown';
+}
+
+/**
+ * A LOWER-TRUST aerobic record for sources that offer only device-bucketed
+ * zone minutes (e.g. Apple Watch history with no stream). Device buckets are
+ * stored verbatim for the record, and where an absolute bpm threshold is
+ * reconstructible, minutes above it are recorded — but nothing here may ever
+ * enter time-in-band math, and every surface that shows it must label it
+ * lower trust. Device bands are cut differently from the personal bands and
+ * have changed boundaries mid-history; a zone label is a claim by a vendor,
+ * not a measurement.
+ */
+export interface BucketedZoneMinutesEvent extends BaseEvent {
+  type: 'bucketed-zone-minutes';
+  device: string;
+  /** Literal: this record type cannot be anything but lower trust. */
+  trust: 'low';
+  modality: Modality;
+  durationMinutes: number;
+  /** Minutes at or above an absolute bpm line, where reconstructible. */
+  minutesAboveThreshold?: Array<{ thresholdBpm: number; minutes: number }>;
+  /** The device's own buckets, verbatim, for provenance only — never band math. */
+  deviceBuckets?: Array<{ label: string; minutes: number }>;
+  note?: string;
+}
+
+/**
+ * A Cooper 12-minute test. Outdoor track and treadmill are separate series
+ * that are never pooled into one trend line — surface changes the test, so a
+ * mixed series would trend the venue, not the athlete. Surface, pacing
+ * strategy, and (for treadmill) ramp correction are recorded per test.
+ * Deliberately not a FitnessMeasurementEvent: it must not overwrite the
+ * GXT-derived vo2max estimate or mix into its series.
+ */
+export interface CooperTestEvent extends BaseEvent {
+  type: 'cooper-test';
+  surface: CooperSurface;
+  distanceMeters: number;
+  /** (distanceMeters − 504.9) / 44.73, computed at the adapter, never re-derived downstream. */
+  vo2maxEstimate: number;
+  pacingStrategy: string;
+  /** Treadmill only: what was done about incline/ramp (e.g. "1% incline throughout"). */
+  rampCorrection?: string;
+  /** ml/kg/min; feeds the SDC band on the series chart (I3). */
+  typicalError?: number;
+}
+
 export type EngineEvent =
   | RecoverySignalEvent
   | FitnessMeasurementEvent
@@ -215,4 +305,8 @@ export type EngineEvent =
   | BlockStartEvent
   | RetestEvent
   | ProfileUpdateEvent
-  | PlanUpdateEvent;
+  | PlanUpdateEvent
+  | HrBandCalibrationEvent
+  | AerobicSessionEvent
+  | BucketedZoneMinutesEvent
+  | CooperTestEvent;

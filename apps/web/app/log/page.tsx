@@ -3,7 +3,7 @@ import { currentState } from '../../lib/data';
 import { StorageNotice } from '../../components/StorageNotice';
 import { DeviceSync } from '../../components/DeviceSync';
 import { SessionLogger } from '../../components/SessionLogger';
-import { FreeTextLog, MorningCheckIn } from './LogForms';
+import { CooperTestLog, FreeTextLog, MorningCheckIn, StreamDropLog } from './LogForms';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +34,19 @@ export default async function LogPage() {
       <section className="card">
         <h2>Morning check-in</h2>
         <MorningCheckIn />
+      </section>
+      <section className="card">
+        <h2>HR stream drop</h2>
+        <p className="muted">
+          Time in band is computed from raw samples against your calibrated bands. Device zone
+          labels are rejected here on purpose: device bands are cut differently and have changed
+          boundaries mid-history.
+        </p>
+        <StreamDropLog />
+      </section>
+      <section className="card">
+        <h2>Cooper test</h2>
+        <CooperTestLog />
       </section>
       <section className="card">
         <h2>Device sync</h2>

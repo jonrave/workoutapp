@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { CONSTANTS } from '@peakspan/engine';
+import { CONSTANTS, cooperSeries, weeklyZone2Rollup } from '@peakspan/engine';
+import type { AerobicSessionEvent, BucketedZoneMinutesEvent, CooperTestEvent } from '@peakspan/engine';
 import { currentState, readEvents } from '../../lib/data';
 import { TrendChart, type TrendPoint } from '../../components/TrendChart';
 
@@ -66,6 +67,22 @@ export default async function TrendsPage() {
   const hrv7d = rolling7d(signalSeries('hrvLnRmssd'), 3);
   const rhr7d = rolling7d(signalSeries('restingHr'), 1);
   const sleep7d = rolling7d(signalSeries('sleepDurationHours'), 2);
+
+  // Aerobic ledger: stream-verified sessions only. Bucketed device records
+  // are listed separately, labeled lower trust, and never enter band math.
+  const aerobicSessions = events.filter(
+    (e): e is AerobicSessionEvent => e.type === 'aerobic-session',
+  );
+  const zone2Weeks = weeklyZone2Rollup(aerobicSessions);
+  const zone2Points: TrendPoint[] = zone2Weeks.map((w) => ({
+    date: w.weekStart,
+    value: w.zone2Minutes,
+  }));
+  const cooper = cooperSeries(events.filter((e): e is CooperTestEvent => e.type === 'cooper-test'));
+  const bucketed = events.filter(
+    (e): e is BucketedZoneMinutesEvent => e.type === 'bucketed-zone-minutes',
+  );
+  const recentDrift = aerobicSessions.slice(-8).reverse();
 
   const hrvBaseline = state.recovery.hrvBaseline60d;
   const hrvSD = state.recovery.hrvBaselineSD;
@@ -165,6 +182,120 @@ export default async function TrendsPage() {
           empty('sleep reading')
         )}
       </section>
+      <section className="card">
+        <h2>Zone 2 — weekly minutes in band</h2>
+        {zone2Points.length > 0 ? (
+          <TrendChart
+            title="Weekly zone 2"
+            unit="min"
+            points={zone2Points}
+            typicalError={0}
+            refLine={{ value: CONSTANTS.WEEKLY_ZONE2_FLOOR_MIN, label: 'weekly floor (convention)' }}
+            caption={`Stream-verified minutes at 128 to 141 bpm against your personal running bands, time-weighted per sample. Device zone labels never enter this sum. The ${CONSTANTS.WEEKLY_ZONE2_FLOOR_MIN}-minute floor is a convention from popular synthesis, not a trial result.`}
+          />
+        ) : (
+          empty('stream-verified aerobic session — sync Strava or drop a stream file on the Log page')
+        )}
+      </section>
+      <section className="card">
+        <h2>Cardiac drift — recent sessions</h2>
+        {recentDrift.length > 0 ? (
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Environment</th>
+                <th>Drift</th>
+              </tr>
+            </thead>
+            <tbody>
+              {recentDrift.map((s) => (
+                <tr key={s.id}>
+                  <td>{s.occurredAt.slice(0, 10)}</td>
+                  <td>{s.environment}</td>
+                  <td>
+                    {s.drift.kind === 'measured'
+                      ? `${s.drift.deltaBpm > 0 ? '+' : ''}${s.drift.deltaBpm} bpm`
+                      : s.drift.kind === 'confounded'
+                        ? `confounded (${s.drift.reason.replace(/-/g, ' ')}); raw delta ${s.drift.deltaBpm > 0 ? '+' : ''}${s.drift.deltaBpm} bpm, not comparable`
+                        : `not computed (${s.drift.reason.replace(/-/g, ' ')})`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          empty('drift-capable session')
+        )}
+        <p className="muted">
+          Drift is first half versus second half at matched work rate. A variable outdoor run is
+          confounded by construction and is flagged rather than reported as a clean number.
+        </p>
+      </section>
+      <section className="card">
+        <h2>Cooper 12-minute test — outdoor track</h2>
+        {cooper.track.length > 0 ? (
+          <TrendChart
+            title="Cooper VO2max, track"
+            unit="ml/kg/min"
+            points={cooper.track}
+            typicalError={CONSTANTS.COOPER_TYPICAL_ERROR}
+            caption="Track series only. Treadmill tests live in their own series below; the two are never pooled, because surface changes the test."
+          />
+        ) : (
+          empty('track Cooper test')
+        )}
+      </section>
+      <section className="card">
+        <h2>Cooper 12-minute test — treadmill</h2>
+        {cooper.treadmill.length > 0 ? (
+          <TrendChart
+            title="Cooper VO2max, treadmill"
+            unit="ml/kg/min"
+            points={cooper.treadmill}
+            typicalError={CONSTANTS.COOPER_TYPICAL_ERROR}
+            caption="Treadmill series only, each test recorded with its ramp correction. Never pooled with track results."
+          />
+        ) : (
+          empty('treadmill Cooper test')
+        )}
+      </section>
+      {bucketed.length > 0 && (
+        <section className="card">
+          <h2>Device-bucketed records — lower trust</h2>
+          <p className="muted">
+            These sessions have no raw stream, only a device&apos;s own zone buckets. Device bands
+            differ from your calibrated bands and have changed boundaries mid-history, so these
+            records are excluded from every band calculation above and are shown only for
+            completeness.
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Device</th>
+                <th>Duration</th>
+                <th>Record</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bucketed.map((b) => (
+                <tr key={b.id}>
+                  <td>{b.occurredAt.slice(0, 10)}</td>
+                  <td>{b.device}</td>
+                  <td>{b.durationMinutes} min</td>
+                  <td>
+                    {b.minutesAboveThreshold
+                      ?.map((m) => `${m.minutes} min at or above ${m.thresholdBpm} bpm`)
+                      .join('; ') ?? 'device buckets only'}{' '}
+                    (lower trust)
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
       <section className="card">
         <h2>VO2max (annual GXT / block retests)</h2>
         {vo2.length > 0 ? (

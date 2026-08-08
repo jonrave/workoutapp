@@ -105,6 +105,33 @@ export const CONSTANTS = {
     other: 1.0,
   } as Record<string, number>,
 
+  /**
+   * convention: weekly Zone 2 floor in minutes-in-band. Traces to a popular
+   * synthesis of aerobic-base practice, not to a controlled trial; no direct
+   * evidence base for the specific number. Expected to be revisited.
+   */
+  WEEKLY_ZONE2_FLOOR_MIN: 180,
+  /**
+   * convention: a gap between consecutive HR samples longer than this
+   * (seconds) is recorded as untracked time rather than attributed to a band.
+   * Guessing through a dropout would fabricate band minutes.
+   */
+  HR_STREAM_GAP_CAP_S: 30,
+  /** convention: cardiac drift needs at least this many minutes of stream to mean anything. */
+  DRIFT_MIN_DURATION_MIN: 20,
+  /** convention: minutes excluded from the start of a stream before drift halves are cut (HR still rising toward steady state). */
+  DRIFT_WARMUP_EXCLUDE_MIN: 5,
+  /** convention: halves whose mean work rate differs by more than this percent are not comparable — drift is confounded. */
+  DRIFT_WORKRATE_HALF_DELTA_PCT: 5,
+  /** convention: a within-session work-rate coefficient of variation above this percent marks the whole session variable — drift is confounded. */
+  DRIFT_WORKRATE_CV_PCT: 15,
+  /**
+   * convention: typical error for a Cooper-test VO2max estimate, ml/kg/min.
+   * Pacing and motivation dominate the noise; no assay-grade figure exists,
+   * so this is a deliberately wide working value (SDC ≈ 5.5 ml/kg/min).
+   */
+  COOPER_TYPICAL_ERROR: 2.0,
+
   /** convention: Layer 5 flags a same-day tissue-recency adjustment when a channel used today was loaded to at least this within the last day. */
   TISSUE_RECENCY_ADJUST_LOAD: 500,
   /** convention: a declared constraint starting within this many days triggers forward planning. */
