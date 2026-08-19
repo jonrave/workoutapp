@@ -1,0 +1,84 @@
+# Oura readiness-gate sync.
+#
+# Oura does not expose overnight data in real time, so this polls in a
+# morning window in America/New_York. Actions cron is UTC and the New York
+# offset shifts across daylight saving (UTC-4 in summer, UTC-5 in winter),
+# so two cron entries cover both regimes and the guard step below keeps only
+# the one that lands in the 07:00-07:59 local hour. Exactly one live run per
+# day, no cron edits in March or November.
+name: Oura gate sync
+
+on:
+  schedule:
+    - cron: '30 11 * * *' # 07:30 America/New_York while on EDT (UTC-4)
+    - cron: '30 12 * * *' # 07:30 America/New_York while on EST (UTC-5)
+  workflow_dispatch: {}
+
+# Never overlap runs: a concurrent pair could interleave a token refresh and
+# persist a dead single-use refresh token.
+concurrency:
+  group: oura-gate-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Morning-window guard (America/New_York)
+        id: guard
+        run: |
+          hour=$(TZ=America/New_York date +%H)
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$hour" != "07" ]; then
+            echo "Skipping: $hour:xx America/New_York is outside the 07:xx window (other DST cron entry)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        if: steps.guard.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.guard.outputs.run == 'true'
+        run: npm ci
+
+      - name: Pull Oura data, write artifacts, ingest events
+        if: steps.guard.outputs.run == 'true'
+        env:
+          OURA_TOKEN: ${{ secrets.OURA_TOKEN }}
+          OURA_CLIENT_ID: ${{ secrets.OURA_CLIENT_ID }}
+          OURA_CLIENT_SECRET: ${{ secrets.OURA_CLIENT_SECRET }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npx tsx scripts/oura-gate-sync.ts
+
+      - name: Commit regenerated artifacts
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          git config user.name "oura-gate-sync"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/oura
+          if git diff --cached --quiet; then
+            echo "Artifacts unchanged; nothing to commit."
+            exit 0
+          fi
+          git commit -m "Regenerate Oura gate artifacts"
+          for delay in 0 2 4 8 16; do
+            sleep "$delay"
+            git pull --rebase origin "${{ github.ref_name }}" || true
+            if git push origin "HEAD:${{ github.ref_name }}"; then
+              exit 0
+            fi
+          done
+          echo "Failed to push artifacts after retries."
+          exit 1
