@@ -83,10 +83,31 @@ the boundary — Oura Readiness and Strava Relative Effort are never imported
 (I4). Pulls are idempotent (deterministic event ids), so syncing overlapping
 windows never duplicates anything.
 
-**Oura** — nightly HRV (rMSSD), resting HR, sleep duration and midpoint:
+**Oura**: nightly HRV (rMSSD), resting HR, sleep duration and midpoint.
+Oura deprecated personal access tokens in December 2025: new PATs cannot be
+created. Two paths:
 
-1. Log in at `cloud.ouraring.com` → **Personal Access Tokens** → create one.
-2. Set `OURA_TOKEN=<token>`.
+1. A PAT issued before the deprecation that still authenticates: set
+   `OURA_TOKEN=<token>` and you are done.
+2. Otherwise OAuth2: register an app at `cloud.ouraring.com` (redirect URI
+   `http://localhost:8484/callback`), then run
+   `OURA_CLIENT_ID=... OURA_CLIENT_SECRET=... DATABASE_URL=... npm run oura:auth`
+   once and click through the consent screen. Credentials land in Postgres
+   (`oura_credentials`) and rotate automatically from then on: Oura refresh
+   tokens are single use, so the sync job persists each rotated pair before
+   any data request and aborts loudly if that write fails.
+
+**Oura readiness gate** (`.github/workflows/oura-gate-sync.yml`): a GitHub
+Actions cron runs `npm run oura:sync` every morning at 07:30
+America/New_York (two UTC cron entries plus a guard step cover the DST
+shift). Each run rewrites `data/oura/gate_current.md` (last 14 days, with
+explicit "not worn or not synced" rows and a staleness banner past 36 hours)
+and `data/oura/gate_series.csv` (rolling 180 days), then appends raw gate
+signals to the event log, idempotent per day and metric, with later Oura
+revisions superseding via `_rev` events. The readiness score is stored in
+the artifacts as an observation only and never becomes an engine event (I4).
+Actions secrets needed: `OURA_TOKEN` or `OURA_CLIENT_ID` +
+`OURA_CLIENT_SECRET`, plus `DATABASE_URL`.
 
 **Strava** — runs, rides, hikes as classified activities:
 

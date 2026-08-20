@@ -5,6 +5,7 @@
  */
 import type { RecoverySignalEvent } from '@peakspan/engine';
 import { defaultContext, recoverySignal, type EventContext } from './manual';
+import { StaticTokenAuth, type OuraAuth } from './oura-auth';
 
 /** Subset of an Oura daily payload we consume. Unknown/composite keys are ignored. */
 export interface OuraDaily {
@@ -112,14 +113,59 @@ export function withDeterministicOuraIds(events: RecoverySignalEvent[]): Recover
 }
 
 /**
- * Minimal Oura API v2 client. Personal access token; raw signals only.
- * Network stays here at the adapter edge — the engine never sees it (I1).
+ * Subset of an Oura API v2 `/usercollection/daily_readiness` document we
+ * consume. The readiness score and contributor subscores are vendor
+ * composites: the score is pulled ONLY as a stored observation for the gate
+ * artifacts and never becomes an engine event (I4). `temperature_deviation`
+ * is the one raw value on this endpoint (degrees Celsius) and does map.
+ */
+export interface OuraDailyReadinessDocV2 {
+  day: string;
+  score?: number | null;
+  /** Degrees Celsius deviation from personal baseline. */
+  temperature_deviation?: number | null;
+}
+
+/**
+ * Minimal Oura API v2 client. Accepts a static bearer token (a still-live
+ * PAT) or an OuraAuth strategy (OAuth2 with single-use refresh rotation).
+ * Network stays here at the adapter edge; the engine never sees it (I1).
  */
 export class OuraClient {
+  private readonly auth: OuraAuth;
+
   constructor(
-    private readonly token: string,
+    tokenOrAuth: string | OuraAuth,
     private readonly fetchImpl: typeof fetch = fetch,
-  ) {}
+  ) {
+    this.auth = typeof tokenOrAuth === 'string' ? new StaticTokenAuth(tokenOrAuth) : tokenOrAuth;
+  }
+
+  /** Paged GET over one usercollection endpoint for a date window. */
+  private async pullCollection<T>(collection: string, startDate: string, endDate: string): Promise<T[]> {
+    const token = await this.auth.accessToken();
+    const base = `https://api.ouraring.com/v2/usercollection/${collection}?start_date=${startDate}&end_date=${endDate}`;
+    const docs: T[] = [];
+    let url: string | null = base;
+    while (url) {
+      const res = await this.fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error(`Oura API ${res.status}: ${await res.text()}`);
+      const body = (await res.json()) as { data?: T[]; next_token?: string | null };
+      docs.push(...(body.data ?? []));
+      url = body.next_token ? `${base}&next_token=${body.next_token}` : null;
+    }
+    return docs;
+  }
+
+  /** Raw sleep period documents (naps included; callers filter). */
+  async pullSleepDocs(startDate: string, endDate: string): Promise<OuraSleepDocV2[]> {
+    return this.pullCollection<OuraSleepDocV2>('sleep', startDate, endDate);
+  }
+
+  /** Raw daily readiness documents (score kept as observation only, I4). */
+  async pullDailyReadinessDocs(startDate: string, endDate: string): Promise<OuraDailyReadinessDocV2[]> {
+    return this.pullCollection<OuraDailyReadinessDocV2>('daily_readiness', startDate, endDate);
+  }
 
   async pullSleep(
     startDate: string,
@@ -127,16 +173,8 @@ export class OuraClient {
     ctx: EventContext = defaultContext,
   ): Promise<RecoverySignalEvent[]> {
     const events: RecoverySignalEvent[] = [];
-    let url: string | null =
-      `https://api.ouraring.com/v2/usercollection/sleep?start_date=${startDate}&end_date=${endDate}`;
-    while (url) {
-      const res = await this.fetchImpl(url, { headers: { Authorization: `Bearer ${this.token}` } });
-      if (!res.ok) throw new Error(`Oura API ${res.status}: ${await res.text()}`);
-      const body = (await res.json()) as { data?: OuraSleepDocV2[]; next_token?: string | null };
-      for (const doc of body.data ?? []) events.push(...mapOuraSleepDocV2(doc, ctx));
-      url = body.next_token
-        ? `https://api.ouraring.com/v2/usercollection/sleep?start_date=${startDate}&end_date=${endDate}&next_token=${body.next_token}`
-        : null;
+    for (const doc of await this.pullSleepDocs(startDate, endDate)) {
+      events.push(...mapOuraSleepDocV2(doc, ctx));
     }
     return withDeterministicOuraIds(events);
   }

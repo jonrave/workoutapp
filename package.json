@@ -11,10 +11,13 @@
     "dev": "npm run dev -w @peakspan/web",
     "start": "npm run start -w @peakspan/web",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit"
+    "typecheck": "tsc -p packages/engine/tsconfig.json --noEmit",
+    "oura:sync": "tsx scripts/oura-gate-sync.ts",
+    "oura:auth": "tsx scripts/oura-auth-helper.ts"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
+    "tsx": "^4.19.0",
     "typescript": "^5.9.0",
     "vitest": "^3.2.0"
   }
