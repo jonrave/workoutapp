@@ -98,9 +98,11 @@ created. Two paths:
    any data request and aborts loudly if that write fails.
 
 **Oura readiness gate** (`.github/workflows/oura-gate-sync.yml`): a GitHub
-Actions cron runs `npm run oura:sync` every morning at 07:30
-America/New_York (two UTC cron entries plus a guard step cover the DST
-shift). Each run rewrites `data/oura/gate_current.md` (last 14 days, with
+Actions cron runs `npm run oura:sync` each morning targeting 07:30
+America/New_York (two UTC cron entries cover the DST shift; both run the
+sync, since GitHub can deliver schedule events hours late and a late pull
+beats a skipped day; idempotent ingest and full artifact regeneration make
+double or late runs safe). Each run rewrites `data/oura/gate_current.md` (last 14 days, with
 explicit "not worn or not synced" rows and a staleness banner past 36 hours)
 and `data/oura/gate_series.csv` (rolling 180 days), then appends raw gate
 signals to the event log, idempotent per day and metric, with later Oura
