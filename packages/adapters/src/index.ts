@@ -4,6 +4,7 @@ export * from './oura';
 export * from './oura-auth';
 export * from './oura-gate';
 export * from './strava';
+export * from './streams';
 export * from './parser';
 export * from './schemas';
 export * from './chat';

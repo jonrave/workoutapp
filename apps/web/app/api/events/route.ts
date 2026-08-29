@@ -8,19 +8,23 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import {
   activity,
+  aerobicSessionFromStream,
+  bucketedZoneMinutes,
+  cooperTest,
   illness,
   injury,
   leverMeasurement,
   fitnessMeasurement,
   missedSession,
+  parseStreamDrop,
   planUpdate,
   profileUpdate,
   subjective,
   validateEvent,
 } from '@peakspan/adapters';
-import type { PlannedSession, ProfileUpdateEvent } from '@peakspan/engine';
+import type { Modality, PlannedSession, ProfileUpdateEvent } from '@peakspan/engine';
 import type { EngineEvent } from '@peakspan/engine';
-import { appendEvent } from '../../../lib/data';
+import { appendEvent, latestCalibration } from '../../../lib/data';
 
 const bodySchema = z.discriminatedUnion('kind', [
   z.object({
@@ -110,6 +114,38 @@ const bodySchema = z.discriminatedUnion('kind', [
     ),
     note: z.string().optional(),
   }),
+  z.object({
+    kind: z.literal('cooper-test'),
+    surface: z.enum(['track', 'treadmill']),
+    distanceMeters: z.number().min(1000).max(5000),
+    pacingStrategy: z.string().min(1),
+    occurredAt: z.string(),
+    rampCorrection: z.string().optional(),
+    typicalError: z.number().positive().optional(),
+  }),
+  z.object({
+    kind: z.literal('aerobic-stream'),
+    modality: z.enum(['run', 'airBike', 'spinBike', 'row', 'swim', 'hike', 'lift', 'other']),
+    occurredAt: z.string(),
+    /** Raw stream payload (file drop or Strava streams JSON); parsed and rejected server-side. */
+    stream: z.unknown(),
+    activityId: z.string().optional(),
+    environment: z.enum(['outdoor', 'treadmill', 'indoor', 'unknown']).optional(),
+  }),
+  z.object({
+    kind: z.literal('bucketed-zone-minutes'),
+    device: z.string().min(1),
+    modality: z.enum(['run', 'airBike', 'spinBike', 'row', 'swim', 'hike', 'lift', 'other']),
+    durationMinutes: z.number().positive(),
+    occurredAt: z.string(),
+    minutesAboveThreshold: z
+      .array(z.object({ thresholdBpm: z.number().positive(), minutes: z.number().nonnegative() }))
+      .optional(),
+    deviceBuckets: z
+      .array(z.object({ label: z.string().min(1), minutes: z.number().nonnegative() }))
+      .optional(),
+    note: z.string().optional(),
+  }),
 ]);
 
 export async function POST(request: Request) {
@@ -174,6 +210,55 @@ export async function POST(request: Request) {
         ...(body.note !== undefined ? { note: body.note } : {}),
       });
       break;
+    case 'cooper-test': {
+      const { kind: _k, ...rest } = body;
+      try {
+        event = cooperTest(rest);
+      } catch (err) {
+        // e.g. a treadmill test with no ramp correction on record.
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : String(err) },
+          { status: 400 },
+        );
+      }
+      break;
+    }
+    case 'aerobic-stream': {
+      const calibration = await latestCalibration(body.modality);
+      if (!calibration) {
+        return NextResponse.json(
+          {
+            error:
+              `No HR band calibration on record for "${body.modality}" (I9: bands are per-modality). ` +
+              'Calibrate this modality before computing time in band; another modality\'s bands are never borrowed.',
+          },
+          { status: 400 },
+        );
+      }
+      try {
+        event = aerobicSessionFromStream({
+          stream: parseStreamDrop(body.stream),
+          modality: body.modality as Modality,
+          calibration,
+          occurredAt: body.occurredAt,
+          ...(body.activityId !== undefined ? { activityId: body.activityId } : {}),
+          ...(body.environment !== undefined ? { environment: body.environment } : {}),
+        });
+      } catch (err) {
+        // DeviceZoneLabelRejection and malformed streams both land here with
+        // their own explanations.
+        return NextResponse.json(
+          { error: err instanceof Error ? err.message : String(err) },
+          { status: 400 },
+        );
+      }
+      break;
+    }
+    case 'bucketed-zone-minutes': {
+      const { kind: _k, ...rest } = body;
+      event = bucketedZoneMinutes(rest);
+      break;
+    }
   }
 
   try {

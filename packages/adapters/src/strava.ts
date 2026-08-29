@@ -5,8 +5,9 @@
  * mapped (I4); sRPE comes from the athlete's logged perceived exertion when
  * present, otherwise from a per-sport convention.
  */
-import type { ActivityEvent, Modality, Pillar, TissueChannel } from '@peakspan/engine';
+import type { ActivityEvent, HrStream, Modality, Pillar, TissueChannel } from '@peakspan/engine';
 import { activity, defaultContext, type EventContext } from './manual';
+import { parseStreamDrop } from './streams';
 
 /** Subset of a Strava API v3 SummaryActivity we consume. */
 export interface StravaActivityV3 {
@@ -22,6 +23,19 @@ export interface StravaActivityV3 {
   start_date?: string;
   /** 1–10 when the athlete logged it. */
   perceived_exertion?: number | null;
+  /** True for trainer/indoor sessions (treadmill run, indoor ride). */
+  trainer?: boolean;
+}
+
+/**
+ * Environment for drift interpretation: a treadmill run can hold work rate
+ * steady; an outdoor run is drift-confounded whenever pace varies.
+ */
+export function stravaEnvironment(raw: StravaActivityV3): 'outdoor' | 'treadmill' | 'indoor' | 'unknown' {
+  if (raw.trainer === undefined) return 'unknown';
+  if (!raw.trainer) return 'outdoor';
+  const sport = (raw.sport_type ?? raw.type ?? '').toLowerCase();
+  return sport.includes('run') ? 'treadmill' : 'indoor';
 }
 
 interface SportProfile {
@@ -190,5 +204,42 @@ export class StravaClient {
       if (batch.length < 100) break;
     }
     return events;
+  }
+
+  /**
+   * Raw sample streams for one activity — time, heartrate, and the work-rate
+   * streams drift matching needs. Only raw samples are requested; Strava's
+   * zone summaries are never fetched here (device zone labels are rejected at
+   * this boundary). Returns null when the activity has no HR stream.
+   */
+  async pullStreams(activityId: number | string): Promise<HrStream | null> {
+    const token = await this.accessToken();
+    const res = await this.fetchImpl(
+      `https://www.strava.com/api/v3/activities/${activityId}/streams` +
+        '?keys=time,heartrate,velocity_smooth,watts&key_by_type=true',
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Strava streams API ${res.status}: ${await res.text()}`);
+    const body = (await res.json()) as Record<string, { data?: unknown[] }>;
+    if (!Array.isArray(body.time?.data) || !Array.isArray(body.heartrate?.data)) return null;
+    return parseStreamDrop(body);
+  }
+
+  /** Raw activities in a window, unmapped — the sync layer pairs them with streams. */
+  async pullRawSince(afterEpochSeconds: number): Promise<StravaActivityV3[]> {
+    const token = await this.accessToken();
+    const all: StravaActivityV3[] = [];
+    for (let page = 1; page <= 5; page++) {
+      const res = await this.fetchImpl(
+        `https://www.strava.com/api/v3/athlete/activities?after=${afterEpochSeconds}&per_page=100&page=${page}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      if (!res.ok) throw new Error(`Strava API ${res.status}: ${await res.text()}`);
+      const batch = (await res.json()) as StravaActivityV3[];
+      all.push(...batch);
+      if (batch.length < 100) break;
+    }
+    return all;
   }
 }

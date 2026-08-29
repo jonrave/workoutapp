@@ -8,8 +8,14 @@
  * POST -> pull the last 30 days from every configured provider.
  */
 import { NextResponse } from 'next/server';
-import { OuraClient, StravaClient } from '@peakspan/adapters';
-import { appendEvent, readEvents, todayIso } from '../../../lib/data';
+import {
+  aerobicSessionFromStream,
+  mapStravaActivity,
+  OuraClient,
+  StravaClient,
+  stravaEnvironment,
+} from '@peakspan/adapters';
+import { appendEvent, latestCalibration, readEvents, todayIso } from '../../../lib/data';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,6 +64,7 @@ async function runSync() {
   const errors: string[] = [];
   let ouraAdded = 0;
   let stravaAdded = 0;
+  let streamsComputed = 0;
 
   if (p.oura) {
     try {
@@ -81,12 +88,36 @@ async function runSync() {
         process.env.STRAVA_CLIENT_SECRET!,
         process.env.STRAVA_REFRESH_TOKEN!,
       );
-      const events = await client.pullSince(after);
-      for (const ev of events) {
-        if (existing.has(ev.id)) continue;
-        await appendEvent(ev);
-        existing.add(ev.id);
-        stravaAdded++;
+      const raws = await client.pullRawSince(after);
+      for (const raw of raws) {
+        const ev = mapStravaActivity(raw);
+        if (!ev) continue;
+        if (!existing.has(ev.id)) {
+          await appendEvent(ev);
+          existing.add(ev.id);
+          stravaAdded++;
+        }
+        // Aerobic ledger: raw HR streams for modalities with a personal band
+        // calibration (I9 — no calibration, no band math; device zone labels
+        // never cross this boundary). Deterministic id keeps re-syncs
+        // idempotent.
+        const aerobicId = `aerobic_${ev.id}`;
+        if (existing.has(aerobicId)) continue;
+        const calibration = await latestCalibration(ev.modality);
+        if (!calibration) continue;
+        const stream = await client.pullStreams(raw.id);
+        if (!stream) continue;
+        const session = aerobicSessionFromStream({
+          stream,
+          modality: ev.modality,
+          calibration,
+          occurredAt: ev.occurredAt,
+          activityId: ev.id,
+          environment: stravaEnvironment(raw),
+        });
+        await appendEvent(session);
+        existing.add(aerobicId);
+        streamsComputed++;
       }
     } catch (err) {
       errors.push(`Strava: ${err instanceof Error ? err.message : String(err)}`);
@@ -95,7 +126,7 @@ async function runSync() {
 
   return NextResponse.json({
     ok: errors.length === 0,
-    added: { oura: ouraAdded, strava: stravaAdded },
+    added: { oura: ouraAdded, strava: stravaAdded, aerobicSessions: streamsComputed },
     window: { start, end: today },
     ...(errors.length ? { errors } : {}),
   });

@@ -1,0 +1,16 @@
+{
+  "description": "User-declared running HR bands, 2026-08-08. Personal calibration, not a device's bands and not 220-age (contract section 9). Zone 2 is 128-141 bpm and zone 5 opens at 172; the user declared no boundary between zones 3 and 4, so they are one honest aggregate band rather than an invented split. Resting floor was declared as 42-44 bpm; 43 is recorded as the midpoint. Applies to the run modality only (I9): no other modality may borrow these bands.",
+  "calibration": {
+    "modality": "run",
+    "hrMaxBpm": 182,
+    "hrRestBpm": 43,
+    "bands": [
+      { "name": "belowZone2", "lowerBpm": 0, "upperBpm": 127 },
+      { "name": "zone2", "lowerBpm": 128, "upperBpm": 141 },
+      { "name": "zone3To4", "lowerBpm": 142, "upperBpm": 171 },
+      { "name": "zone5", "lowerBpm": 172, "upperBpm": null }
+    ],
+    "calibratedOn": "2026-08-08",
+    "method": "user-declared personal bands; heart-rate-reserve informed (max 182, resting floor 42-44)"
+  }
+}
