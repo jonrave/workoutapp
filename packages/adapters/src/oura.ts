@@ -149,7 +149,7 @@ export class OuraClient {
     let url: string | null = base;
     while (url) {
       const res = await this.fetchImpl(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error(`Oura API ${res.status}: ${await res.text()}`);
+      if (!res.ok) throw new Error(`Oura API ${res.status} for ${collection}. Check token validity, daily scope, and account access.`);
       const body = (await res.json()) as { data?: T[]; next_token?: string | null };
       docs.push(...(body.data ?? []));
       url = body.next_token ? `${base}&next_token=${body.next_token}` : null;

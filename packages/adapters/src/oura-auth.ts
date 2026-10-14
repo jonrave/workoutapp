@@ -57,12 +57,12 @@ export class StaticTokenAuth implements OuraAuth {
  * subsequent run unauthenticated.
  */
 export class TokenPersistenceError extends Error {
-  constructor(cause: unknown) {
+  constructor(_cause: unknown) {
     super(
       'Refreshed Oura credentials could not be persisted. Aborting before any data ' +
         'request: the old refresh token is already invalidated (Oura refresh tokens ' +
         'are single use), so continuing now would strand every future run. ' +
-        `Persistence failure: ${cause instanceof Error ? cause.message : String(cause)}`,
+        'Check database write access and reauthorize with npm run oura:auth.',
     );
     this.name = 'TokenPersistenceError';
   }
@@ -85,7 +85,8 @@ async function postToken(
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams(params).toString(),
   });
-  if (!res.ok) throw new Error(`Oura token endpoint ${res.status}: ${await res.text()}`);
+  // Never log the provider response body: it can contain credential material.
+  if (!res.ok) throw new Error(`Oura token endpoint ${res.status}. Check the OAuth app credentials and reauthorize with npm run oura:auth.`);
   const body = (await res.json()) as TokenResponse;
   if (!body.access_token || !body.refresh_token) {
     throw new Error('Oura token endpoint returned no token pair');

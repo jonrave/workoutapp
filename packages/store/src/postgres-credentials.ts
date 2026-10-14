@@ -58,6 +58,20 @@ export class PostgresOuraCredentialStore implements OuraCredentialStore {
     };
   }
 
+  /** Check persistence permissions before consuming a one-time OAuth code. */
+  async checkAccess(): Promise<void> {
+    await this.ensureSchema();
+    const result = await this.pool.query(
+      `SELECT has_table_privilege('oura_credentials', 'SELECT') AS can_select,
+              has_table_privilege('oura_credentials', 'INSERT') AS can_insert,
+              has_table_privilege('oura_credentials', 'UPDATE') AS can_update`,
+    );
+    const row = result.rows[0];
+    if (!row?.can_select || !row?.can_insert || !row?.can_update) {
+      throw new Error('The database role needs SELECT, INSERT, and UPDATE on oura_credentials.');
+    }
+  }
+
   async save(credentials: StoredOuraCredentials): Promise<void> {
     await this.ensureSchema();
     await this.pool.query(
