@@ -129,7 +129,7 @@ describe('OuraOAuth refresh rotation', () => {
     const stale = new FakeStore(expired);
     await expect(
       new OuraOAuth('id', 'secret', stale, fetchImpl, () => NOW).accessToken(),
-    ).rejects.toThrow(/refresh token already used/);
+    ).rejects.toThrow(/Oura token endpoint 401/);
   });
 
   it('fails with guidance when the store was never seeded', async () => {

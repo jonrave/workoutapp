@@ -84,6 +84,8 @@ the boundary — Oura Readiness and Strava Relative Effort are never imported
 windows never duplicates anything.
 
 **Oura**: nightly HRV (rMSSD), resting HR, sleep duration and midpoint.
+For the scheduled readiness gate, follow the [private OAuth setup steps](docs/oura-setup.md).
+The web app sync button below still supports static tokens only.
 Oura deprecated personal access tokens in December 2025: new PATs cannot be
 created. Two paths:
 
@@ -91,8 +93,11 @@ created. Two paths:
    `OURA_TOKEN=<token>` and you are done.
 2. Otherwise OAuth2: register an app at `cloud.ouraring.com` (redirect URI
    `http://localhost:8484/callback`), then run
-   `OURA_CLIENT_ID=... OURA_CLIENT_SECRET=... DATABASE_URL=... npm run oura:auth`
-   once and click through the consent screen. Credentials land in Postgres
+   `node --env-file=.env.oura.local --import tsx scripts/oura-auth-helper.ts`
+   once on your computer and click through the consent screen. Create the
+   ignored local file from `.env.oura.example`; PostgreSQL is required before
+   authorization. Never enter secret values in a shell command or chat.
+   Credentials land in Postgres
    (`oura_credentials`) and rotate automatically from then on: Oura refresh
    tokens are single use, so the sync job persists each rotated pair before
    any data request and aborts loudly if that write fails.

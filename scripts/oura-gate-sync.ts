@@ -5,12 +5,11 @@
  *   1. authenticates (static OURA_TOKEN if set, else OAuth2 with single-use
  *      refresh rotation persisted to Postgres BEFORE any data request),
  *   2. pulls 180 days of sleep and daily_readiness documents,
- *   3. rewrites data/oura/gate_current.md and data/oura/gate_series.csv in
- *      full (the API is the source of truth; re-derivation over
- *      reconciliation),
- *   4. appends raw gate signals to the event log, idempotent on
+ *   3. appends raw gate signals to the event log, idempotent on
  *      (day, signal), with revisions superseding via the projector's
- *      last-event-wins fold.
+ *      last-event-wins fold,
+ *   4. rewrites data/oura/gate_current.md and data/oura/gate_series.csv in
+ *      full after successful ingest (the API is the source of truth).
  *
  * Fails loudly (non-zero exit) on auth failure, credential persistence
  * failure, and an empty API response. The readiness score goes to the
@@ -18,6 +17,7 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   GATE_TUNABLES,
   OuraClient,
@@ -31,9 +31,11 @@ import {
 } from '@peakspan/adapters';
 import { ImmutabilityViolation } from '@peakspan/store';
 import { PostgresEventLog, PostgresOuraCredentialStore } from '@peakspan/store/postgres';
+import { checkSyncConfig, safeErrorMessage } from './oura-config';
 
 function resolveAuth(): { auth: OuraAuth; credentialStore: PostgresOuraCredentialStore | null } {
-  if (process.env.OURA_TOKEN) {
+  checkSyncConfig(process.env);
+  if (process.env.OURA_TOKEN?.trim()) {
     return { auth: new StaticTokenAuth(process.env.OURA_TOKEN), credentialStore: null };
   }
   const { OURA_CLIENT_ID, OURA_CLIENT_SECRET, DATABASE_URL } = process.env;
@@ -48,8 +50,16 @@ function resolveAuth(): { auth: OuraAuth; credentialStore: PostgresOuraCredentia
   );
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const { auth, credentialStore } = resolveAuth();
+  try {
+    await sync(auth);
+  } finally {
+    await credentialStore?.close();
+  }
+}
+
+async function sync(auth: OuraAuth): Promise<void> {
   const outputDir = process.env.GATE_OUTPUT_DIR ?? 'data/oura';
 
   // Rotation happens here, before any data request; TokenPersistenceError
@@ -67,6 +77,7 @@ async function main(): Promise<void> {
     await client.pullSleepDocs(startDay, endDay),
     await client.pullDailyReadinessDocs(startDay, endDay),
   ];
+  console.log(`Fetched ${sleepDocs.length} sleep and ${readinessDocs.length} readiness records.`);
   if (sleepDocs.length === 0 && readinessDocs.length === 0) {
     throw new Error(
       `Oura returned zero records for ${startDay}..${endDay}. A ${GATE_TUNABLES.SERIES_WINDOW_DAYS}-day ` +
@@ -77,11 +88,6 @@ async function main(): Promise<void> {
 
   const seriesDays = buildGateDays(sleepDocs, readinessDocs, endDay, GATE_TUNABLES.SERIES_WINDOW_DAYS);
   const currentDays = seriesDays.slice(-GATE_TUNABLES.CURRENT_WINDOW_DAYS);
-
-  await mkdir(outputDir, { recursive: true });
-  await writeFile(path.join(outputDir, 'gate_current.md'), renderGateCurrentMd(currentDays, generatedAt));
-  await writeFile(path.join(outputDir, 'gate_series.csv'), renderGateSeriesCsv(seriesDays));
-  console.log(`Wrote gate_current.md and gate_series.csv to ${outputDir} (window ${startDay}..${endDay})`);
 
   if (process.env.GATE_SKIP_INGEST === '1') {
     console.log('GATE_SKIP_INGEST=1: skipping event-log ingest.');
@@ -109,10 +115,16 @@ async function main(): Promise<void> {
     }
   }
 
-  await credentialStore?.close();
+  // Publish artifacts only after ingest succeeds, so a DB failure leaves prior files intact.
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(path.join(outputDir, 'gate_current.md'), renderGateCurrentMd(currentDays, generatedAt));
+  await writeFile(path.join(outputDir, 'gate_series.csv'), renderGateSeriesCsv(seriesDays));
+  console.log(`Wrote gate_current.md and gate_series.csv to ${outputDir} (window ${startDay}..${endDay})`);
 }
 
-main().catch((err) => {
-  console.error(`oura-gate-sync failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(`oura-gate-sync failed: ${safeErrorMessage(err)}`);
+    process.exitCode = 1;
+  });
+}
